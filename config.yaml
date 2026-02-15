@@ -6,7 +6,7 @@ preprocessing:
   fps: 6  # Sampling frame rate
   resize_width: 512
   resize_height: 288
-  max_frames: 100  # Giới hạn số frames xử lý
+  max_frames: 1000  # Giới hạn số frames xử lý
   color_space: 'RGB'  # RGB hoặc GRAY
 
 # === FORENSIC ANALYSIS ===
