@@ -1,12 +1,12 @@
 # src/features.py
 """
-Module features: Aggregator tổng hợp forensic + reality features thành vector
+Module features: Aggregator tổng hợp forensic + reality + deep learning features
 """
 
 import numpy as np
 from typing import Dict, Any, Optional, List, Tuple
 import logging
-
+from typing import Tuple
 from .preprocessing import VideoPreprocessor
 from .forensic import ForensicAnalyzer
 from .reality_engine import RealityEngine
@@ -18,7 +18,10 @@ logger = logging.getLogger('hybrid_detector.features')
 
 class FeatureExtractor:
     """
-    Class tổng hợp trích xuất features từ video
+    Class tổng hợp trích xuất ALL features từ video
+    - Traditional: Forensic + Reality (35 features)
+    - Deep Learning: CNN features (11 features)
+    Total: 46 features (có thể extend với ensemble)
     """
     
     def __init__(self, config: Optional[dict] = None):
@@ -33,43 +36,104 @@ class FeatureExtractor:
         
         self.config = config
         self.feature_config = config.get('features', {})
-        self.expected_dim = self.feature_config.get('expected_dimension', 35)
         self.normalization = self.feature_config.get('normalization', 'standard')
         
-        # Initialize sub-analyzers
+        # Initialize traditional analyzers
+        logger.info("Initializing traditional feature extractors...")
         self.preprocessor = VideoPreprocessor(config)
         self.forensic = ForensicAnalyzer(config)
         self.reality = RealityEngine(config)
         
-        logger.info(f"FeatureExtractor initialized, expected dim: {self.expected_dim}")
+        # Initialize deep learning extractor (optional)
+        self.deep_extractor = None
+        self.use_deep = config.get('features', {}).get('use_deep_features', False)
+        
+        if self.use_deep:
+            try:
+                logger.info("Attempting to load deep learning module...")
+                from .deep_features import DeepFeatureExtractor, EnsembleDeepExtractor
+                
+                use_ensemble = config.get('deep_learning', {}).get('use_ensemble', False)
+                
+                if use_ensemble:
+                    logger.info("Initializing Ensemble Deep Learning extractors...")
+                    self.deep_extractor = EnsembleDeepExtractor(config)
+                else:
+                    logger.info("Initializing Deep Learning extractor...")
+                    self.deep_extractor = DeepFeatureExtractor(config)
+                
+                logger.info("✓ Deep learning ENABLED")
+                
+            except ImportError as e:
+                logger.warning(f"Cannot import deep_features: {e}")
+                logger.warning("Deep learning features DISABLED - using traditional only")
+                self.use_deep = False
+                self.deep_extractor = None
+            except Exception as e:
+                logger.error(f"Error initializing deep learning: {e}")
+                logger.warning("Deep learning features DISABLED - using traditional only")
+                self.use_deep = False
+                self.deep_extractor = None
+        else:
+            logger.info("Deep learning features disabled in config")
+        
+        # Set expected dimension
+        if self.use_deep:
+            self.expected_dim = config.get('features', {}).get('expected_dimension', 46)
+        else:
+            self.expected_dim = 35  # Traditional only
+        
+        logger.info(f"✓ FeatureExtractor initialized")
+        logger.info(f"  Mode: {'HYBRID (Traditional + Deep)' if self.use_deep else 'TRADITIONAL ONLY'}")
+        logger.info(f"  Expected dimension: {self.expected_dim}")
     
     def extract_features(self, frames: np.ndarray) -> Dict[str, float]:
         """
-        Trích xuất tất cả features từ frames
+        Trích xuất TẤT CẢ features từ frames
         
         Args:
             frames: Array frames normalized
             
         Returns:
-            Dictionary chứa tất cả features
+            Dictionary chứa tất cả features (traditional + deep nếu enabled)
         """
         all_features = {}
         
-        # Forensic features
+        # 1. Extract Traditional Features
+        logger.debug("Extracting forensic features...")
         forensic_feats = self.forensic.analyze(frames)
         all_features.update(forensic_feats)
         
-        # Reality features
+        logger.debug("Extracting reality features...")
         reality_feats = self.reality.analyze(frames)
         all_features.update(reality_feats)
         
-        logger.info(f"Extracted {len(all_features)} features total")
+        traditional_count = len(all_features)
+        logger.info(f"✓ Extracted {traditional_count} traditional features")
+        
+        # 2. Extract Deep Learning Features (if enabled)
+        if self.use_deep and self.deep_extractor is not None:
+            try:
+                logger.debug("Extracting deep learning features...")
+                sample_frames = self.config.get('deep_learning', {}).get('sample_frames', 10)
+                deep_feats = self.deep_extractor.extract_video_features(frames, sample_frames)
+                all_features.update(deep_feats)
+                
+                deep_count = len(deep_feats)
+                logger.info(f"✓ Extracted {deep_count} deep learning features")
+                
+            except Exception as e:
+                logger.error(f"Error extracting deep features: {e}")
+                logger.warning("Continuing with traditional features only")
+        
+        total_count = len(all_features)
+        logger.info(f"✓ Total features extracted: {total_count}")
         
         return all_features
     
     def extract_from_video(self, video_path: str) -> Tuple[Dict[str, float], dict]:
         """
-        Pipeline đầy đủ: video -> frames -> features
+        Pipeline đầy đủ: video -> frames -> features (traditional + deep)
         
         Args:
             video_path: Đường dẫn video
@@ -87,7 +151,7 @@ class FeatureExtractor:
             logger.warning(f"Video ngắn ({len(frames)} frames), padding...")
             frames = self.preprocessor.handle_short_video(frames, min_frames=10)
         
-        # Extract features
+        # Extract features (traditional + deep)
         features = self.extract_features(frames)
         
         return features, metadata
@@ -138,9 +202,9 @@ class FeatureExtractor:
         Lấy danh sách tên features theo thứ tự chuẩn
         
         Returns:
-            List tên features
+            List tên features (traditional + deep nếu enabled)
         """
-        # Định nghĩa thứ tự features chuẩn
+        # Traditional features
         forensic_names = [
             'fft_mean', 'fft_std', 'fft_max', 'fft_high_freq_energy', 'fft_radial_slope',
             'dct_mean', 'dct_std', 'dct_dc_mean', 'dct_ac_energy',
@@ -155,7 +219,52 @@ class FeatureExtractor:
             'compression_mean', 'compression_std', 'compression_delta_mean', 'complexity_mean'
         ]
         
-        return forensic_names + reality_names
+        traditional_names = forensic_names + reality_names
+        
+        # Deep learning features (if enabled)
+        if self.use_deep and self.deep_extractor is not None:
+            deep_names = [
+                'deep_feat_mean',
+                'deep_feat_std',
+                'deep_feat_max',
+                'deep_feat_min',
+                'deep_temporal_var_mean',
+                'deep_temporal_var_std',
+                'deep_l2_norm_mean',
+                'deep_l2_norm_std',
+                'deep_similarity_mean',
+                'deep_similarity_std',
+                'deep_sparsity',
+            ]
+            return traditional_names + deep_names
+        else:
+            return traditional_names
+    
+    def get_feature_info(self) -> Dict[str, Any]:
+        """
+        Lấy thông tin chi tiết về features
+        
+        Returns:
+            Dictionary chứa info về features
+        """
+        feature_names = self.get_feature_names()
+        
+        info = {
+            'total_features': len(feature_names),
+            'traditional_features': 35,
+            'deep_features': len(feature_names) - 35 if self.use_deep else 0,
+            'use_deep_learning': self.use_deep,
+            'feature_names': feature_names,
+            'expected_dimension': self.expected_dim,
+        }
+        
+        if self.use_deep and self.deep_extractor is not None:
+            if hasattr(self.deep_extractor, 'model_type'):
+                info['deep_model'] = self.deep_extractor.model_type
+            elif hasattr(self.deep_extractor, 'models'):
+                info['deep_model'] = 'ensemble'
+                info['ensemble_models'] = [m.model_type for m in self.deep_extractor.models]
+        
+        return info
 
 
-from typing import Tuple  # Import thiếu

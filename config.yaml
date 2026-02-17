@@ -1,87 +1,85 @@
 # config.yaml
-# Cấu hình mặc định cho Hybrid++ Reality Stress Detector
+# Cấu hình UNIFIED cho Hybrid++ Detector
+# Tự động chuyển Traditional <-> Hybrid dựa vào use_deep_features
 
 # === PREPROCESSING ===
 preprocessing:
-  fps: 6  # Sampling frame rate
+  fps: 6
   resize_width: 512
   resize_height: 288
-  max_frames: 1000  # Giới hạn số frames xử lý
-  color_space: 'RGB'  # RGB hoặc GRAY
+  max_frames: 1000
+  color_space: 'RGB'
 
 # === FORENSIC ANALYSIS ===
 forensic:
-  # FFT/DCT
-  fft_components: 10  # Số thành phần FFT lấy
+  fft_components: 10
   dct_components: 10
-  spectrum_bins: 8    # Bins cho histogram
-  
-  # PRNU Residual
-  prnu_denoise_kernel: 5  # Kernel size cho denoising
-  prnu_method: 'bilateral'  # bilateral hoặc gaussian
-  
-  # Optical Flow
+  spectrum_bins: 8
+  prnu_denoise_kernel: 5
+  prnu_method: 'bilateral'
   optical_flow_quality: 0.01
   optical_flow_min_distance: 10
   optical_flow_block_size: 7
 
 # === REALITY ENGINE ===
 reality_engine:
-  # Multi-scale Entropy
-  entropy_scales: 4  # Số mức pyramid
+  entropy_scales: 4
   entropy_window_size: 16
-  
-  # Fractal Dimension
   fractal_box_sizes: [2, 4, 8, 16, 32]
   fractal_edge_threshold_low: 50
   fractal_edge_threshold_high: 150
-  
-  # Causal Motion Predictor
-  causal_delay_embedding: 3  # Số delay steps
+  causal_delay_embedding: 3
   causal_prediction_horizon: 1
-  causal_model_type: 'linear'  # linear hoặc tcn
-  
-  # Information Conservation
+  causal_model_type: 'linear'
   compression_codec: 'libx264'
   compression_preset: 'medium'
   compression_chunk_seconds: 1.0
 
 # === STRESS LAB ===
 stress_lab:
-  # Physics Perturbations
   light_jitter_strength: 0.1
   blur_kernel_range: [3, 7]
-  affine_rotation_range: [-5, 5]  # degrees
+  affine_rotation_range: [-5, 5]
   affine_scale_range: [0.95, 1.05]
-  
-  # Compression Cascade
-  compression_levels: [23, 28, 35]  # CRF values
-  
-  # Temporal Shuffle
+  compression_levels: [23, 28, 35]
   shuffle_window_size: 10
-  
-  # Noise Injection
   noise_std: 0.02
-  
-  # Stability thresholds
   stability_threshold_low: 0.7
   stability_threshold_high: 0.9
 
+# === DEEP LEARNING ===
+deep_learning:
+  enabled: true              # true = Hybrid mode, false = Traditional mode
+  model_type: 'resnet50'     # resnet18, resnet50, efficientnet_b0, efficientnet_b3, vgg16
+  use_gpu: true              # true = use GPU if available, false = CPU only
+  sample_frames: 10          # Số frames để extract deep features
+  
+  # Ensemble multiple models (advanced)
+  use_ensemble: false
+  ensemble_models:
+    - 'resnet50'
+    - 'efficientnet_b0'
+
 # === FEATURES ===
 features:
-  expected_dimension: 35  # Số chiều vector mong đợi
-  normalization: 'standard'  # standard, minmax, hoặc none
+  # Dimension sẽ tự động adjust:
+  # - Traditional only: 35
+  # - Traditional + Deep: 46
+  # - Traditional + Deep Ensemble: 46+
+  expected_dimension: 46     # Auto-adjusted internally
+  normalization: 'standard'
+  use_deep_features: true    # Must match deep_learning.enabled
 
 # === CLASSIFIER ===
 classifier:
-  model_type: 'lightgbm'  # lightgbm hoặc svm
+  model_type: 'lightgbm'
   
   # LightGBM params
-  lgbm_num_leaves: 31
-  lgbm_max_depth: 6
-  lgbm_learning_rate: 0.05
-  lgbm_n_estimators: 100
-  lgbm_min_child_samples: 20
+  lgbm_num_leaves: 50
+  lgbm_max_depth: 8
+  lgbm_learning_rate: 0.03
+  lgbm_n_estimators: 150
+  lgbm_min_child_samples: 15
   
   # SVM params
   svm_kernel: 'rbf'
@@ -89,17 +87,19 @@ classifier:
   svm_gamma: 'scale'
   
   # Calibration
-  calibration_method: 'isotonic'  # isotonic hoặc platt
+  calibration_method: 'isotonic'
   calibration_cv: 5
 
 # === FUSION ===
 fusion:
-  # Trọng số cho các component scores
-  artifact_weight: 0.4
-  reality_weight: 0.35
-  stress_weight: 0.25
+  # Weights auto-adjust dựa vào mode:
+  # Traditional: artifact=0.4, reality=0.35, stress=0.25
+  # Hybrid: artifact=0.3, reality=0.3, stress=0.2, deep=0.2
+  artifact_weight: 0.30
+  reality_weight: 0.30
+  stress_weight: 0.20
+  deep_weight: 0.20         # Only used if deep learning enabled
   
-  # Thresholds
   threshold_fake: 0.5
   confidence_threshold_high: 0.7
   confidence_threshold_low: 0.3
@@ -114,7 +114,7 @@ evaluation:
     - 'precision'
     - 'recall'
     - 'f1'
-  target_tpr: 0.9  # For FPR calculation
+  target_tpr: 0.9
 
 # === REPORT ===
 report:
@@ -125,7 +125,7 @@ report:
 
 # === LOGGING ===
 logging:
-  level: 'INFO'  # DEBUG, INFO, WARNING, ERROR
+  level: 'INFO'
   log_dir: 'logs'
   log_file: 'detector.log'
   console_output: true
@@ -138,4 +138,4 @@ paths:
   cache_dir: '.cache'
 
 # === VERSION ===
-version: '1.0.0'
+version: '1.5.0-unified'

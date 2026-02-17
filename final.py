@@ -187,7 +187,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1000, 700)
         
         # ===== CẤU HÌNH CỐ ĐỊNH - Thay đổi ở đây =====
-        self.model_path = "models/detector_.pkl"  # ← Đổi path model tại đây
+        self.model_path = "models/alpha.pkl"  # ← Đổi path model tại đây
         self.config_path = "config.yaml"                # ← Đổi config tại đây
         # ==============================================
         
