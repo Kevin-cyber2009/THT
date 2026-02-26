@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# app.py
+# final.py
 """
 Hybrid++ Video AI Detector - GUI Application
 Giao diện kiểm tra video Real hay AI-generated
@@ -11,6 +11,19 @@ from pathlib import Path
 from datetime import datetime
 import json
 import threading
+
+# ============================================================
+# FIX ĐƯỜNG DẪN - Hoạt động cả khi chạy .py lẫn .exe
+# ============================================================
+if getattr(sys, 'frozen', False):
+    # Đang chạy là .exe (PyInstaller)
+    BASE_PATH = os.path.dirname(sys.executable)
+else:
+    # Đang chạy là .py thường
+    BASE_PATH = os.path.dirname(os.path.abspath(__file__))
+
+os.chdir(BASE_PATH)  # Set working directory về đúng chỗ
+# ============================================================
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -116,13 +129,14 @@ class AnalysisThread(QThread):
             self.finished.emit(result)
             
         except Exception as e:
-            self.error.emit(str(e))
+            import traceback
+            self.error.emit(f"{str(e)}\n\n{traceback.format_exc()}")
 
 
 class DownloadThread(QThread):
     """Thread download video từ URL"""
     
-    finished = Signal(str)  # Signal trả về path của video đã download
+    finished = Signal(str)
     progress = Signal(str)
     error = Signal(str)
     
@@ -135,14 +149,11 @@ class DownloadThread(QThread):
         """Download video"""
         try:
             import subprocess
-            import tempfile
             
             self.progress.emit("Đang download video...")
             
-            # Create temp directory
             os.makedirs(self.output_dir, exist_ok=True)
             
-            # Download với yt-dlp
             output_template = os.path.join(self.output_dir, "downloaded_%(id)s.%(ext)s")
             
             cmd = [
@@ -164,7 +175,6 @@ class DownloadThread(QThread):
             if result.returncode != 0:
                 raise Exception(f"Download failed: {result.stderr}")
             
-            # Tìm file đã download
             downloaded_files = list(Path(self.output_dir).glob("downloaded_*"))
             if not downloaded_files:
                 raise Exception("Không tìm thấy file đã download")
@@ -186,13 +196,12 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Hybrid++ Video AI Detector")
         self.setMinimumSize(1000, 700)
         
-        # ===== CẤU HÌNH CỐ ĐỊNH - Thay đổi ở đây =====
-        self.model_path = "models/alpha.pkl"  # ← Đổi path model tại đây
-        self.config_path = "config.yaml"                # ← Đổi config tại đây
-        # ==============================================
-        
-        self.history_file = "output/history.json"
-        self.temp_dir = "temp"
+        # ===== ĐƯỜNG DẪN - Tự động tìm đúng vị trí dù chạy .py hay .exe =====
+        self.model_path = os.path.join(BASE_PATH, "models", "delta.pkl")
+        self.config_path = os.path.join(BASE_PATH, "config.yaml")
+        self.history_file = os.path.join(BASE_PATH, "output", "history.json")
+        self.temp_dir = os.path.join(BASE_PATH, "temp")
+        # ======================================================================
         
         # Set dark theme
         self.setup_theme()
@@ -343,40 +352,32 @@ class MainWindow(QMainWindow):
                 border-top: 1px solid #404040;
             }
         """)
-        
     
     def setup_ui(self):
         """Setup giao diện"""
         
-        # Central widget
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
         
-        # Title
         title = QLabel("🎬 HYBRID++ VIDEO AI DETECTOR")
         title.setFont(QFont("Arial", 20, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet("color: #2196F3; padding: 10px;")
         layout.addWidget(title)
         
-        # Tabs
         tabs = QTabWidget()
         layout.addWidget(tabs)
         
-        # Tab 1: Analysis
         analysis_tab = self.create_analysis_tab()
         tabs.addTab(analysis_tab, "🔍 Phân tích")
         
-        # Tab 2: History
         history_tab = self.create_history_tab()
         tabs.addTab(history_tab, "📊 Lịch sử")
         
-        # Tab 3: About (thay vì Settings)
         about_tab = self.create_about_tab()
         tabs.addTab(about_tab, "ℹ️ Thông tin")
         
-        # Status bar
         self.statusBar().showMessage("Sẵn sàng")
     
     def create_analysis_tab(self):
@@ -385,11 +386,9 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        # Input group
         input_group = QGroupBox("📥 Input Video")
         input_layout = QVBoxLayout()
         
-        # Radio buttons
         radio_layout = QHBoxLayout()
         self.radio_file = QRadioButton("File trên máy")
         self.radio_url = QRadioButton("Link (YouTube, Facebook, ...)")
@@ -400,7 +399,6 @@ class MainWindow(QMainWindow):
         radio_layout.addStretch()
         input_layout.addLayout(radio_layout)
         
-        # Input field
         input_field_layout = QHBoxLayout()
         self.input_field = QLineEdit()
         self.input_field.setPlaceholderText("Chọn file video hoặc nhập URL...")
@@ -413,7 +411,6 @@ class MainWindow(QMainWindow):
         input_group.setLayout(input_layout)
         layout.addWidget(input_group)
         
-        # Analyze button
         self.btn_analyze = QPushButton("🔍 PHÂN TÍCH VIDEO")
         self.btn_analyze.setStyleSheet("""
             QPushButton {
@@ -424,20 +421,15 @@ class MainWindow(QMainWindow):
                 padding: 12px;
                 border-radius: 5px;
             }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QPushButton:disabled {
-                background-color: #BDBDBD;
-            }
+            QPushButton:hover { background-color: #1976D2; }
+            QPushButton:disabled { background-color: #BDBDBD; }
         """)
         self.btn_analyze.clicked.connect(self.start_analysis)
         layout.addWidget(self.btn_analyze)
         
-        # Progress
         self.progress_bar = QProgressBar()
         self.progress_bar.setTextVisible(False)
-        self.progress_bar.setRange(0, 0)  # Indeterminate
+        self.progress_bar.setRange(0, 0)
         self.progress_bar.hide()
         layout.addWidget(self.progress_bar)
         
@@ -446,23 +438,12 @@ class MainWindow(QMainWindow):
         self.progress_label.hide()
         layout.addWidget(self.progress_label)
         
-        # Result group
         result_group = QGroupBox("📊 Kết quả")
         result_layout = QVBoxLayout()
         
-        # Result display
         self.result_display = QTextEdit()
         self.result_display.setReadOnly(True)
         self.result_display.setMinimumHeight(300)
-        self.result_display.setStyleSheet("""
-            QTextEdit {
-                font-size: 14px;
-                background-color: #F5F5F5;
-                border: 1px solid #BDBDBD;
-                border-radius: 5px;
-                padding: 10px;
-            }
-        """)
         result_layout.addWidget(self.result_display)
         
         result_group.setLayout(result_layout)
@@ -478,7 +459,6 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        # Toolbar
         toolbar = QHBoxLayout()
         btn_refresh = QPushButton("🔄 Làm mới")
         btn_refresh.clicked.connect(self.refresh_history)
@@ -489,7 +469,6 @@ class MainWindow(QMainWindow):
         toolbar.addStretch()
         layout.addLayout(toolbar)
         
-        # History table
         self.history_table = QTableWidget()
         self.history_table.setColumnCount(5)
         self.history_table.setHorizontalHeaderLabels([
@@ -498,7 +477,6 @@ class MainWindow(QMainWindow):
         self.history_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.history_table)
         
-        # Load history
         self.refresh_history()
         
         return widget
@@ -511,71 +489,30 @@ class MainWindow(QMainWindow):
         layout.setSpacing(20)
         layout.setContentsMargins(30, 30, 30, 30)
         
-        # Logo/Title
         title = QLabel("🎬 HYBRID++ DETECTOR")
         title.setFont(QFont("Arial", 24, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet("color: #2196F3; padding: 20px;")
         layout.addWidget(title)
         
-        # Version
         version = QLabel("Version 1.0.0")
         version.setFont(QFont("Arial", 12))
         version.setAlignment(Qt.AlignCenter)
         version.setStyleSheet("color: #B0B0B0;")
         layout.addWidget(version)
         
-        # Separator
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
         line.setStyleSheet("background-color: #404040;")
         layout.addWidget(line)
         
-        # Description
-        desc = QLabel("""
-        <div style='color: #E0E0E0; line-height: 1.6;'>
-        <p style='font-size: 16px; text-align: center;'>
-        <b>Hệ thống phát hiện video AI-generated</b>
-        </p>
-        <p style='text-align: center; color: #B0B0B0;'>
-        Sử dụng công nghệ phân tích forensic, reality compliance và stress testing
-        </p>
-        </div>
-        """)
-        desc.setWordWrap(True)
-        desc.setAlignment(Qt.AlignCenter)
-        layout.addWidget(desc)
-        
-        # Features
-        features_group = QGroupBox("⭐ Công nghệ sử dụng")
-        features_layout = QVBoxLayout()
-        features_layout.setSpacing(10)
-        
-        features_text = QLabel("""
-        <div style='color: #E0E0E0; line-height: 1.8;'>
-        <ul style='list-style: none; padding-left: 0;'>
-        <li>🔬 <b>Forensic Analysis:</b> FFT, DCT, PRNU, Optical Flow</li>
-        <li>⚛️ <b>Reality Engine:</b> Entropy, Fractal, Causal Motion</li>
-        <li>💪 <b>Stress Testing:</b> Adversarial Perturbations</li>
-        <li>🤖 <b>Machine Learning:</b> LightGBM + Calibration</li>
-        </ul>
-        </div>
-        """)
-        features_text.setWordWrap(True)
-        features_layout.addWidget(features_text)
-        features_group.setLayout(features_layout)
-        layout.addWidget(features_group)
-        
-        # Model info
         model_group = QGroupBox("📦 Cấu hình hiện tại")
         model_layout = QVBoxLayout()
-        model_layout.setSpacing(10)
-        
         model_info = QLabel(f"""
         <div style='color: #E0E0E0; line-height: 1.8;'>
         <p><b>Model:</b> <span style='color: #2196F3;'>{self.model_path}</span></p>
         <p><b>Config:</b> <span style='color: #2196F3;'>{self.config_path}</span></p>
-        <p><b>Output:</b> <span style='color: #2196F3;'>{self.history_file}</span></p>
+        <p><b>Base Path:</b> <span style='color: #2196F3;'>{BASE_PATH}</span></p>
         </div>
         """)
         model_info.setWordWrap(True)
@@ -585,20 +522,9 @@ class MainWindow(QMainWindow):
         
         layout.addStretch()
         
-        # Footer
-        footer = QLabel("""
-        <div style='text-align: center; color: #808080; font-size: 12px;'>
-        <p>Developed for Video Authenticity Verification</p>
-        <p>© 2025 Hybrid++ Project</p>
-        </div>
-        """)
-        footer.setWordWrap(True)
-        layout.addWidget(footer)
-        
         return widget
     
     def on_input_type_changed(self):
-        """Xử lý khi đổi input type"""
         if self.radio_file.isChecked():
             self.btn_browse.setEnabled(True)
             self.input_field.setPlaceholderText("Chọn file video hoặc nhập đường dẫn...")
@@ -607,7 +533,6 @@ class MainWindow(QMainWindow):
             self.input_field.setPlaceholderText("Nhập URL (YouTube, Facebook, ...)...")
     
     def browse_file(self):
-        """Chọn file video"""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Chọn video",
@@ -623,44 +548,38 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Model không tồn tại",
-                f"Không tìm thấy model tại: {self.model_path}\n\n"
-                "Vui lòng train model trước hoặc chọn model khác trong Settings."
+                f"Không tìm thấy model tại:\n{self.model_path}\n\n"
+                f"Vui lòng đảm bảo file models/delta.pkl tồn tại."
             )
             self.btn_analyze.setEnabled(False)
         else:
             self.btn_analyze.setEnabled(True)
+            self.statusBar().showMessage(f"✓ Model loaded: {self.model_path}")
     
     def start_analysis(self):
-        """Bắt đầu phân tích"""
-        
         input_text = self.input_field.text().strip()
         
         if not input_text:
             QMessageBox.warning(self, "Lỗi", "Vui lòng nhập file path hoặc URL!")
             return
         
-        # Disable button
         self.btn_analyze.setEnabled(False)
         self.progress_bar.show()
         self.progress_label.show()
+        self.result_display.clear()
         
         if self.radio_url.isChecked():
-            # Download video trước
             self.start_download(input_text)
         else:
-            # Phân tích trực tiếp
             if not os.path.exists(input_text):
-                QMessageBox.warning(self, "Lỗi", f"File không tồn tại: {input_text}")
+                QMessageBox.warning(self, "Lỗi", f"File không tồn tại:\n{input_text}")
                 self.btn_analyze.setEnabled(True)
                 self.progress_bar.hide()
                 self.progress_label.hide()
                 return
-            
             self.analyze_video(input_text)
     
     def start_download(self, url):
-        """Download video từ URL"""
-        
         self.download_thread = DownloadThread(url, self.temp_dir)
         self.download_thread.progress.connect(self.update_progress)
         self.download_thread.finished.connect(self.on_download_finished)
@@ -668,12 +587,9 @@ class MainWindow(QMainWindow):
         self.download_thread.start()
     
     def on_download_finished(self, video_path):
-        """Xử lý khi download xong"""
         self.analyze_video(video_path)
     
     def analyze_video(self, video_path):
-        """Phân tích video"""
-        
         self.analysis_thread = AnalysisThread(
             video_path,
             self.model_path,
@@ -685,34 +601,22 @@ class MainWindow(QMainWindow):
         self.analysis_thread.start()
     
     def update_progress(self, message):
-        """Cập nhật progress"""
         self.progress_label.setText(message)
         self.statusBar().showMessage(message)
     
     def on_analysis_finished(self, result):
-        """Xử lý khi phân tích xong"""
-        
-        # Hide progress
         self.progress_bar.hide()
         self.progress_label.hide()
         self.btn_analyze.setEnabled(True)
-        
-        # Display result
         self.display_result(result)
-        
-        # Save to history
         self.save_to_history(result)
         self.refresh_history()
-        
-        self.statusBar().showMessage("Phân tích hoàn tất!", 5000)
+        self.statusBar().showMessage("✓ Phân tích hoàn tất!", 5000)
     
     def on_error(self, error_msg):
-        """Xử lý lỗi"""
-        
         self.progress_bar.hide()
         self.progress_label.hide()
         self.btn_analyze.setEnabled(True)
-        
         QMessageBox.critical(self, "Lỗi", f"Có lỗi xảy ra:\n{error_msg}")
         self.statusBar().showMessage("Lỗi!", 5000)
     
@@ -723,65 +627,63 @@ class MainWindow(QMainWindow):
         prob_fake = result['probability_fake']
         prob_real = result['probability_real']
         
-        # Color based on prediction
         if prediction == 'FAKE':
-            color = "#F44336"  # Red
+            color = "#F44336"
             icon = "🔴"
             confidence = prob_fake
         else:
-            color = "#4CAF50"  # Green
+            color = "#4CAF50"
             icon = "🟢"
             confidence = prob_real
         
-        # Build HTML
         html = f"""
-        <div style="font-family: Arial;">
-            <h2 style="color: {color}; text-align: center;">
+        <div style="font-family: Arial; color: #212121;">
+            <h2 style="color: {color}; text-align: center; font-size: 24px;">
                 {icon} KẾT QUẢ: {prediction}
             </h2>
             
-            <div style="background: #F5F5F5; padding: 15px; border-radius: 5px; margin: 10px 0;">
-                <h3>📊 Confidence:</h3>
-                <div style="background: white; padding: 10px; border-radius: 3px;">
-                    <p><strong>Probability FAKE:</strong> {prob_fake:.1%}</p>
-                    <p><strong>Probability REAL:</strong> {prob_real:.1%}</p>
-                    <p><strong>Confidence Level:</strong> {result['fusion_result'].get('confidence', 'N/A')}</p>
-                </div>
+            <div style="background: #E3F2FD; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                <h3 style="color: #1565C0;">📊 Confidence:</h3>
+                <p><strong>Probability FAKE:</strong> {prob_fake:.1%}</p>
+                <p><strong>Probability REAL:</strong> {prob_real:.1%}</p>
+                <p><strong>Confidence Level:</strong> {result['fusion_result'].get('confidence', 'N/A')}</p>
             </div>
             
-            <div style="background: #F5F5F5; padding: 15px; border-radius: 5px; margin: 10px 0;">
-                <h3>🔍 Component Scores:</h3>
-                <div style="background: white; padding: 10px; border-radius: 3px;">
-                    <p><strong>Artifact Score:</strong> {result['artifact_score']:.3f}</p>
-                    <p><strong>Reality Score:</strong> {result['reality_score']:.3f}</p>
-                </div>
+            <div style="background: #F3E5F5; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                <h3 style="color: #6A1B9A;">🔍 Component Scores:</h3>
+                <p><strong>Artifact Score:</strong> {result['artifact_score']:.3f}</p>
+                <p><strong>Reality Score:</strong> {result['reality_score']:.3f}</p>
             </div>
             
-            <div style="background: #F5F5F5; padding: 15px; border-radius: 5px; margin: 10px 0;">
-                <h3>💡 Giải thích:</h3>
+            <div style="background: #E8F5E9; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                <h3 style="color: #2E7D32;">💡 Giải thích:</h3>
                 <ol>
         """
         
-        for explanation in result['explanations']:
-            html += f"<li>{explanation}</li>"
+        for explanation in result.get('explanations', []):
+            html += f"<li style='margin: 5px 0;'>{explanation}</li>"
         
         html += """
                 </ol>
             </div>
             
-            <div style="background: #F5F5F5; padding: 15px; border-radius: 5px; margin: 10px 0;">
-                <h3>📹 Video Info:</h3>
-                <div style="background: white; padding: 10px; border-radius: 3px;">
+            <div style="background: #FFF3E0; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                <h3 style="color: #E65100;">📹 Video Info:</h3>
         """
         
         metadata = result.get('metadata', {})
         html += f"<p><strong>Frames:</strong> {metadata.get('num_frames', 'N/A')}</p>"
         html += f"<p><strong>Resolution:</strong> {metadata.get('width', 'N/A')}x{metadata.get('height', 'N/A')}</p>"
-        html += f"<p><strong>FPS:</strong> {metadata.get('fps', 'N/A'):.1f}</p>"
+        
+        fps = metadata.get('fps', 0)
+        try:
+            html += f"<p><strong>FPS:</strong> {float(fps):.1f}</p>"
+        except:
+            html += f"<p><strong>FPS:</strong> {fps}</p>"
+        
         html += f"<p><strong>Duration:</strong> {metadata.get('duration', 0):.1f}s</p>"
         
         html += """
-                </div>
             </div>
         </div>
         """
@@ -789,7 +691,6 @@ class MainWindow(QMainWindow):
         self.result_display.setHtml(html)
     
     def load_history(self):
-        """Load lịch sử"""
         if os.path.exists(self.history_file):
             try:
                 with open(self.history_file, 'r', encoding='utf-8') as f:
@@ -799,8 +700,6 @@ class MainWindow(QMainWindow):
         return []
     
     def save_to_history(self, result):
-        """Lưu vào lịch sử"""
-        # Simplify result for history
         history_entry = {
             'timestamp': result['timestamp'],
             'video_path': result['video_path'],
@@ -809,75 +708,51 @@ class MainWindow(QMainWindow):
             'confidence': result['fusion_result'].get('confidence', 'N/A')
         }
         
-        self.history.insert(0, history_entry)  # Newest first
-        
-        # Keep only last 100
+        self.history.insert(0, history_entry)
         self.history = self.history[:100]
         
-        # Save
         os.makedirs(os.path.dirname(self.history_file), exist_ok=True)
         with open(self.history_file, 'w', encoding='utf-8') as f:
             json.dump(self.history, f, indent=2, ensure_ascii=False)
     
     def refresh_history(self):
-        """Làm mới bảng lịch sử"""
         self.history = self.load_history()
-        
         self.history_table.setRowCount(len(self.history))
         
         for i, entry in enumerate(self.history):
-            # Timestamp
             ts = datetime.fromisoformat(entry['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
             self.history_table.setItem(i, 0, QTableWidgetItem(ts))
             
-            # Video
             video_name = os.path.basename(entry['video_path'])
             self.history_table.setItem(i, 1, QTableWidgetItem(video_name))
             
-            # Prediction
             pred_item = QTableWidgetItem(entry['prediction'])
-            if entry['prediction'] == 'FAKE':
-                pred_item.setForeground(QColor('#F44336'))
-            else:
-                pred_item.setForeground(QColor('#4CAF50'))
+            pred_item.setForeground(QColor('#F44336') if entry['prediction'] == 'FAKE' else QColor('#4CAF50'))
             self.history_table.setItem(i, 2, pred_item)
             
-            # Confidence
-            conf = f"{entry['probability_fake']:.1%}" if entry['prediction'] == 'FAKE' else f"{1-entry['probability_fake']:.1%}"
+            prob = entry['probability_fake']
+            conf = f"{prob:.1%}" if entry['prediction'] == 'FAKE' else f"{1-prob:.1%}"
             self.history_table.setItem(i, 3, QTableWidgetItem(conf))
-            
-            # Detail
-            detail = f"{entry['confidence']}"
-            self.history_table.setItem(i, 4, QTableWidgetItem(detail))
+            self.history_table.setItem(i, 4, QTableWidgetItem(entry['confidence']))
     
     def clear_history(self):
-        """Xóa lịch sử"""
         reply = QMessageBox.question(
-            self,
-            "Xác nhận",
+            self, "Xác nhận",
             "Bạn có chắc muốn xóa toàn bộ lịch sử?",
             QMessageBox.Yes | QMessageBox.No
         )
-        
         if reply == QMessageBox.Yes:
             self.history = []
             if os.path.exists(self.history_file):
                 os.remove(self.history_file)
             self.refresh_history()
-            QMessageBox.information(self, "Thành công", "Đã xóa lịch sử!")
 
 
 def main():
-    """Main function"""
     app = QApplication(sys.argv)
-    
-    # Set style
     app.setStyle('Fusion')
-    
-    # Create window
     window = MainWindow()
     window.show()
-    
     sys.exit(app.exec())
 
 

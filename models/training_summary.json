@@ -1,9 +1,9 @@
 {
   "mode": "hybrid",
   "dataset": {
-    "total_samples": 105,
-    "real_samples": 49,
-    "fake_samples": 56,
+    "total_samples": 146,
+    "real_samples": 70,
+    "fake_samples": 76,
     "feature_dimension": 39
   },
   "features": {
@@ -53,17 +53,21 @@
       "deep_sparsity"
     ],
     "expected_dimension": 46,
-    "deep_model": "resnet50"
+    "deep_model": "ensemble",
+    "ensemble_models": [
+      "resnet50",
+      "efficientnet_b0"
+    ]
   },
   "metrics": {
     "auc": 1.0,
-    "accuracy": 0.9904761904761905,
+    "accuracy": 1.0,
     "precision": 1.0,
-    "recall": 0.9821428571428571,
-    "f1": 0.990990990990991,
+    "recall": 1.0,
+    "f1": 1.0,
     "fpr_at_tpr_0.9": 0.0
   },
-  "model_path": "models/alpha.pkl",
+  "model_path": "models/delta.pkl",
   "feature_names": [
     "fft_mean",
     "fft_std",
@@ -108,13 +112,13 @@
   "config_file": "config.yaml",
   "cv_results": {
     "cv_scores": [
-      0.9545454545454546,
-      0.9454545454545455,
-      0.8818181818181818,
-      0.9727272727272728,
-      0.9722222222222223
+      0.9732142857142858,
+      0.9428571428571428,
+      0.9619047619047619,
+      0.9857142857142857,
+      0.7714285714285714
     ],
-    "mean_auc": 0.9453535353535354,
-    "std_auc": 0.03344395479660723
+    "mean_auc": 0.9270238095238096,
+    "std_auc": 0.07906375337350026
   }
 }

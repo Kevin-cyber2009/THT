@@ -39,7 +39,7 @@ echo [4/4] Checking result...
 if exist "dist\DeepfakeDetector.exe" (
     echo.
     echo ================================================================================
-    echo ✓ BUILD SUCCESSFUL!
+    echo BUILD SUCCESSFUL!
     echo ================================================================================
     for %%I in ("dist\DeepfakeDetector.exe") do set SIZE=%%~zI
     set /a SIZE_MB=%SIZE%/1048576

@@ -55,17 +55,13 @@ deep_learning:
   sample_frames: 10          # Số frames để extract deep features
   
   # Ensemble multiple models (advanced)
-  use_ensemble: false
+  use_ensemble: true
   ensemble_models:
     - 'resnet50'
     - 'efficientnet_b0'
 
 # === FEATURES ===
 features:
-  # Dimension sẽ tự động adjust:
-  # - Traditional only: 35
-  # - Traditional + Deep: 46
-  # - Traditional + Deep Ensemble: 46+
   expected_dimension: 46     # Auto-adjusted internally
   normalization: 'standard'
   use_deep_features: true    # Must match deep_learning.enabled
