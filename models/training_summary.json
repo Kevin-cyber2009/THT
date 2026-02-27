@@ -1,9 +1,9 @@
 {
   "mode": "hybrid",
   "dataset": {
-    "total_samples": 146,
+    "total_samples": 168,
     "real_samples": 70,
-    "fake_samples": 76,
+    "fake_samples": 98,
     "feature_dimension": 39
   },
   "features": {
@@ -61,13 +61,13 @@
   },
   "metrics": {
     "auc": 1.0,
-    "accuracy": 1.0,
+    "accuracy": 0.9940476190476191,
     "precision": 1.0,
-    "recall": 1.0,
-    "f1": 1.0,
+    "recall": 0.9897959183673469,
+    "f1": 0.9948717948717949,
     "fpr_at_tpr_0.9": 0.0
   },
-  "model_path": "models/delta.pkl",
+  "model_path": "models/x.pkl",
   "feature_names": [
     "fft_mean",
     "fft_std",
@@ -112,13 +112,13 @@
   "config_file": "config.yaml",
   "cv_results": {
     "cv_scores": [
-      0.9732142857142858,
-      0.9428571428571428,
-      0.9619047619047619,
-      0.9857142857142857,
-      0.7714285714285714
+      0.9500000000000001,
+      0.95,
+      0.9464285714285714,
+      0.9060150375939849,
+      0.7180451127819549
     ],
-    "mean_auc": 0.9270238095238096,
-    "std_auc": 0.07906375337350026
+    "mean_auc": 0.8940977443609022,
+    "std_auc": 0.0895825773200796
   }
 }
