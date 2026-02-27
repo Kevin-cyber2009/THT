@@ -14,10 +14,10 @@ scikit-learn>=1.5.2
 lightgbm>=4.5.0
 joblib>=1.4.2
 
-# Deep Learning (CPU only)
+# Deep Learning (CPU only - Python 3.14 cần torch>=2.9.0)
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.4.1+cpu
-torchvision==0.19.1+cpu
+torch==2.9.0+cpu
+torchvision==0.20.0+cpu
 
 # Data & Config
 pandas>=2.2.3
