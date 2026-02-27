@@ -1,36 +1,35 @@
-# requirements-server.txt - Deploy lên RENDER
+# requirements-server.txt - Deploy lên RENDER (Python 3.14 compatible)
 
 # Build tools
 setuptools>=68.0.0
 wheel>=0.41.0
 
-# Xử lý ảnh/video (headless - không cần GUI)
-opencv-python-headless==4.8.1.78
-numpy==1.26.4
-scipy==1.13.1
+# Xử lý ảnh/video
+opencv-python-headless==4.10.0.84
+numpy==2.1.3
 Pillow==10.1.0
 
-# Machine Learning
-scikit-learn==1.3.2
-lightgbm==4.1.0
-joblib==1.3.2
+# Machine Learning (không cần scipy)
+scikit-learn==1.5.2
+lightgbm==4.5.0
+joblib==1.4.2
 
-# Deep Learning (CPU only - Render không có GPU)
+# Deep Learning (CPU only)
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.1.0+cpu
-torchvision==0.16.0+cpu
+torch==2.4.1+cpu
+torchvision==0.19.1+cpu
 
 # Data & Config
-pandas==2.1.4
-PyYAML==6.0.1
+pandas==2.2.3
+PyYAML==6.0.2
 
 # PDF
-reportlab==4.0.7
+reportlab==4.2.5
 
 # Web server
-flask==3.0.0
-flask-cors==4.0.0
-gunicorn==21.2.0
+flask==3.1.0
+flask-cors==5.0.0
+gunicorn==23.0.0
 
 # Utilities
-tqdm==4.66.1
+tqdm==4.67.1
