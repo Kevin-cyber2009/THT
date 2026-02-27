@@ -4,7 +4,10 @@ services:
     env: python
     region: singapore
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: >
+      pip install setuptools wheel &&
+      pip install torch==2.1.0+cpu torchvision==0.16.0+cpu --index-url https://download.pytorch.org/whl/cpu &&
+      pip install -r requirements.txt
     startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --workers 2 --timeout 300
     envVars:
       - key: PYTHON_VERSION

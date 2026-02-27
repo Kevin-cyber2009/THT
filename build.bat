@@ -1,61 +1,96 @@
 @echo off
-REM fix_and_build.bat
-REM Uninstall PyQt5, then build final.py to exe
+REM build.bat - Build client to standalone .exe
 
-echo ================================================================================
-echo FIX PyQt5 CONFLICT + BUILD EXE
-echo ================================================================================
+echo ============================================================
+echo   BUILD DEEPFAKE DETECTOR CLIENT
+echo ============================================================
 echo.
 
-echo [1/4] Uninstalling PyQt5 (conflicts with PySide6)...
-pip uninstall PyQt5 PyQt5-Qt5 PyQt5-sip PyQt5-plugins PyQt5-tools -y
-echo ✓ PyQt5 removed
+REM Check Python
+python --version >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Python not found!
+    echo Please install Python 3.11+
+    pause
+    exit /b 1
+)
 
-echo.
-echo [2/4] Cleaning old build files...
-if exist build rmdir /s /q build
-if exist dist  rmdir /s /q dist
-if exist *.spec del /q *.spec
-echo ✓ Cleaned
-
-echo.
-echo [3/4] Building exe from final.py...
-echo Please wait 5-10 minutes...
+echo [INFO] Python found!
 echo.
 
-pyinstaller ^
-  --onefile ^
-  --windowed ^
-  --name="DeepfakeDetector" ^
-  --add-data="config.yaml;." ^
-  --add-data="models;models" ^
-  --add-data="src;src" ^
-  --collect-all="PySide6" ^
-  final.py
+REM Check PyInstaller
+python -c "import PyInstaller" >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] Installing PyInstaller...
+    pip install pyinstaller
+    if errorlevel 1 (
+        echo [ERROR] Failed to install PyInstaller
+        pause
+        exit /b 1
+    )
+)
 
+REM Check if client.py exists
+if not exist "client.py" (
+    echo [ERROR] client.py not found!
+    echo Please make sure client.py is in the same directory
+    pause
+    exit /b 1
+)
+
+echo [INFO] Building executable...
+echo [INFO] This may take 2-5 minutes...
 echo.
-echo [4/4] Checking result...
 
-if exist "dist\DeepfakeDetector.exe" (
+REM Build with PyInstaller
+pyinstaller --onefile ^
+    --windowed ^
+    --name="DeepfakeDetectorClient" ^
+    --icon=icon.ico ^
+    --add-data="icon.ico;." ^
+    client.py
+
+if errorlevel 1 (
     echo.
-    echo ================================================================================
-    echo BUILD SUCCESSFUL!
-    echo ================================================================================
-    for %%I in ("dist\DeepfakeDetector.exe") do set SIZE=%%~zI
-    set /a SIZE_MB=%SIZE%/1048576
-    echo File: dist\DeepfakeDetector.exe
-    echo Size: %SIZE_MB% MB
-    echo.
-    set /p RUN="Launch now? (y/n): "
-    if /i "%RUN%"=="y" start "" "dist\DeepfakeDetector.exe"
-) else (
-    echo.
-    echo ✗ Still failed. Trying console build to see errors...
-    pyinstaller --onefile --console --name="DeepfakeDetector-debug" --collect-all="PySide6" final.py
-    echo.
-    echo Run this to see the error:
-    echo   dist\DeepfakeDetector-debug.exe
+    echo [ERROR] Build failed!
+    echo Check errors above
+    pause
+    exit /b 1
 )
 
 echo.
+echo ============================================================
+echo   BUILD SUCCESSFUL!
+echo ============================================================
+echo.
+echo Output: dist\DeepfakeDetectorClient.exe
+echo.
+
+REM Show file info
+if exist "dist\DeepfakeDetectorClient.exe" (
+    echo File info:
+    dir dist\DeepfakeDetectorClient.exe | find "DeepfakeDetectorClient.exe"
+    echo.
+    echo Size: ~5-10MB (lightweight!)
+    echo.
+)
+
+echo ============================================================
+echo   NEXT STEPS
+echo ============================================================
+echo.
+echo 1. Test:
+echo    dist\DeepfakeDetectorClient.exe
+echo.
+echo 2. Configure API URL:
+echo    Settings tab ^> Enter your server URL
+echo    Example: https://your-app.onrender.com
+echo.
+echo 3. Distribute:
+echo    Share dist\DeepfakeDetectorClient.exe to users
+echo.
+echo NOTE: Users need internet to connect to your API server
+echo ============================================================
+echo.
+
 pause
