@@ -1,35 +1,51 @@
-# requirements-server.txt - Deploy lên RENDER (Python 3.14)
+# requirements_production.txt
+# FULL dependencies for Deepfake Detector API Server - PRODUCTION VERSION
+# Includes rate limiting and enhanced security features
 
-# Build tools
-setuptools>=68.0.0
-wheel>=0.41.0
+# ============================================================
+# WEB FRAMEWORK
+# ============================================================
+flask==3.0.0
+flask-cors==4.0.0
+gunicorn==21.2.0
+werkzeug==3.0.0
 
-# Xử lý ảnh/video
-opencv-python-headless>=4.10.0.84
-numpy>=2.1.0
-Pillow>=11.0.0
+# ============================================================
+# SECURITY & RATE LIMITING
+# ============================================================
+flask-limiter==3.5.0
+limits==3.6.0
 
-# Machine Learning
-scikit-learn>=1.5.2
-lightgbm>=4.5.0
-joblib>=1.4.2
+# ============================================================
+# CORE ML/CV LIBRARIES
+# ============================================================
+numpy==1.24.3
+opencv-python-headless==4.8.1.78
+scipy==1.11.4
+scikit-learn==1.3.2
+lightgbm==4.1.0
 
-# Deep Learning (CPU only - Python 3.14)
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.9.0+cpu
-torchvision==0.24.0+cpu
+# ============================================================
+# DATA PROCESSING
+# ============================================================
+pandas==2.1.4
+PyYAML==6.0.1
+joblib==1.3.2
 
-# Data & Config
-pandas>=2.2.3
-PyYAML>=6.0.2
+# ============================================================
+# IMAGE/VIDEO PROCESSING
+# ============================================================
+Pillow==10.1.0
+imageio==2.31.5
+imageio-ffmpeg==0.4.9
 
-# PDF
-reportlab>=4.2.5
+# ============================================================
+# OPTIMIZATION & PERFORMANCE
+# ============================================================
+gevent==23.9.1
 
-# Web server
-flask>=3.1.0
-flask-cors>=5.0.0
-gunicorn>=23.0.0
-
-# Utilities
-tqdm>=4.67.1
+# ============================================================
+# UTILITIES
+# ============================================================
+python-dateutil==2.8.2
+pytz==2023.3

@@ -255,7 +255,7 @@ class MainWindow(QMainWindow):
         
         common_urls = [
             ("Local Server", "http://localhost:5000"),
-            ("Render.com", "https://your-app.onrender.com"),
+            ("Render.com", "https://tht-ddoj.onrender.com/"),
             ("Railway.app", "https://your-app.railway.app"),
             ("Custom", "https://your-domain.com")
         ]
