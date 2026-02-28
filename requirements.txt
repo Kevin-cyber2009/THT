@@ -1,4 +1,4 @@
-# requirements-server.txt - Deploy lên RENDER (Python 3.14, NO scipy)
+# requirements-server.txt - PHẢI khớp với version lúc train model
 
 # Build tools
 setuptools>=68.0.0
@@ -6,16 +6,13 @@ wheel>=0.41.0
 
 # Ảnh / video
 opencv-python-headless>=4.10.0.84
-numpy>=2.1.0
+numpy==1.26.4
 Pillow>=11.0.0
 
-# Machine Learning
-scikit-learn>=1.5.2
-lightgbm>=4.5.0
+# Machine Learning - PHẢI đúng version train
+scikit-learn==1.5.1
+lightgbm==4.5.0
 joblib>=1.4.2
-
-# Deep Learning (CPU - torch/torchvision cài riêng qua buildCommand)
-# torch và torchvision KHÔNG liệt kê ở đây để tránh xung đột index
 
 # Data & Config
 pandas>=2.2.3

@@ -22,7 +22,7 @@ else:
 
 os.chdir(BASE_PATH)
 
-RENDER_API_URL = "https://your-app.onrender.com"  # ← CHANGE THIS!
+RENDER_API_URL = "https://tht-ddoj.onrender.com"
 TEMP_DIR = os.path.join(BASE_PATH, "temp_downloads")
 
 
@@ -31,7 +31,6 @@ TEMP_DIR = os.path.join(BASE_PATH, "temp_downloads")
 # ─────────────────────────────────────────────
 
 class DownloadThread(QThread):
-    """Download video từ YouTube / Facebook bằng yt-dlp"""
     progress = Signal(str)
     finished = Signal(str)
     error    = Signal(str)
@@ -44,7 +43,6 @@ class DownloadThread(QThread):
     def run(self):
         try:
             import subprocess
-
             self.progress.emit("Đang kiểm tra yt-dlp...")
             check = subprocess.run(["yt-dlp", "--version"], capture_output=True, text=True)
             if check.returncode != 0:
@@ -53,7 +51,6 @@ class DownloadThread(QThread):
 
             os.makedirs(self.output_dir, exist_ok=True)
             output_tpl = os.path.join(self.output_dir, "downloaded_%(id)s.%(ext)s")
-
             self.progress.emit("Đang download video...")
             cmd = [
                 "yt-dlp",
@@ -76,13 +73,11 @@ class DownloadThread(QThread):
 
             self.progress.emit("Download hoàn tất!")
             self.finished.emit(str(files[0]))
-
         except Exception as e:
             self.error.emit(str(e))
 
 
 class AnalysisThread(QThread):
-    """Gửi video lên server phân tích"""
     progress = Signal(str)
     finished = Signal(dict)
     error    = Signal(str)
@@ -93,19 +88,40 @@ class AnalysisThread(QThread):
 
     def run(self):
         try:
-            self.progress.emit("Đang kiểm tra server...")
+            self.progress.emit("Đang kết nối server...")
             try:
-                health = requests.get(f"{RENDER_API_URL}/health", timeout=15)
+                health = requests.get(f"{RENDER_API_URL}/health", timeout=60)
+                data = health.json()
+
+                if data.get("model_loaded") is False:
+                    self.error.emit(
+                        "⚠️ Server chưa load được model!\n\n"
+                        "Nguyên nhân: File models/alpha.pkl chưa có trên server.\n\n"
+                        "Cách fix:\n"
+                        "1. Kiểm tra file models/alpha.pkl tồn tại trong repo\n"
+                        "2. Nếu file > 100MB dùng Git LFS:\n"
+                        "   git lfs install\n"
+                        "   git lfs track 'models/*.pkl'\n"
+                        "   git add models/alpha.pkl && git push\n"
+                        "3. Nếu < 100MB:\n"
+                        "   git add models/alpha.pkl && git push"
+                    )
+                    return
+
                 if health.status_code != 200:
                     self.error.emit("Server offline. Vui lòng thử lại sau.")
                     return
-            except Exception:
-                self.error.emit("Không kết nối được server. Kiểm tra internet.")
+
+            except requests.exceptions.ConnectionError:
+                self.error.emit("Không kết nối được server.\nKiểm tra internet hoặc server đang ngủ (thử lại sau 60s).")
+                return
+            except requests.exceptions.Timeout:
+                self.error.emit("Server đang khởi động lại (Render free tier).\nVui lòng đợi 60 giây rồi thử lại.")
                 return
 
             self.progress.emit("Đang upload video...")
             with open(self.video_path, "rb") as f:
-                self.progress.emit("Đang phân tích AI...")
+                self.progress.emit("Đang phân tích AI... (có thể mất 1-3 phút)")
                 response = requests.post(
                     f"{RENDER_API_URL}/api/analyze",
                     files={"video": f},
@@ -113,12 +129,12 @@ class AnalysisThread(QThread):
                 )
 
             if response.status_code != 200:
-                self.error.emit(f"Server lỗi: {response.status_code}")
+                self.error.emit(f"Server lỗi {response.status_code}:\n{response.text[:300]}")
                 return
 
             result = response.json()
             if not result.get("success"):
-                self.error.emit(result.get("error", "Lỗi không xác định"))
+                self.error.emit(f"Phân tích thất bại:\n{result.get('error', 'Lỗi không xác định')}")
                 return
 
             result["video_path"] = self.video_path
@@ -127,7 +143,7 @@ class AnalysisThread(QThread):
             self.finished.emit(result)
 
         except Exception as e:
-            self.error.emit(f"Lỗi: {str(e)}")
+            self.error.emit(f"Lỗi không xác định:\n{str(e)}")
 
 
 # ─────────────────────────────────────────────
@@ -147,6 +163,9 @@ class ModernWindow(QMainWindow):
 
         self.setup_ui()
         self.apply_modern_style()
+
+        # Kiểm tra server khi khởi động
+        QTimer.singleShot(500, self.check_server_status)
 
     # ── UI BUILD ──────────────────────────────
 
@@ -176,6 +195,13 @@ class ModernWindow(QMainWindow):
         subtitle.setObjectName("subtitle")
         subtitle.setAlignment(Qt.AlignCenter)
         wlayout.addWidget(subtitle)
+
+        # Server status banner
+        self.server_banner = QLabel("🔄 Đang kiểm tra server...")
+        self.server_banner.setObjectName("bannerChecking")
+        self.server_banner.setAlignment(Qt.AlignCenter)
+        self.server_banner.setWordWrap(True)
+        wlayout.addWidget(self.server_banner)
 
         wlayout.addWidget(self.create_mode_toggle())
 
@@ -208,7 +234,9 @@ class ModernWindow(QMainWindow):
         layout.addWidget(title)
         layout.addStretch()
 
-        for label, slot in [("📜 History", self.show_history), ("ℹ️ About", self.show_about)]:
+        for label, slot in [("🌐 Kiểm tra server", self.check_server_status),
+                             ("📜 History",         self.show_history),
+                             ("ℹ️ About",           self.show_about)]:
             btn = QPushButton(label)
             btn.setObjectName("topBarButton")
             btn.clicked.connect(slot)
@@ -244,8 +272,9 @@ class ModernWindow(QMainWindow):
         layout.setContentsMargins(40, 40, 40, 40)
         layout.setSpacing(16)
 
-        for txt, obj in [("📹", "uploadIcon"), ("Kéo thả hoặc nhấn chọn file", "uploadText"),
-                         ("MP4, AVI, MOV, MKV (tối đa 200MB)", "uploadSubtext")]:
+        for txt, obj in [("📹", "uploadIcon"),
+                         ("Kéo thả hoặc nhấn chọn file", "uploadText"),
+                         ("MP4, AVI, MOV, MKV (tối đa 100MB)", "uploadSubtext")]:
             lbl = QLabel(txt)
             lbl.setObjectName(obj)
             lbl.setAlignment(Qt.AlignCenter)
@@ -326,7 +355,6 @@ class ModernWindow(QMainWindow):
         platforms.setAlignment(Qt.AlignCenter)
         platforms.setWordWrap(True)
         layout.addWidget(platforms)
-
         return panel
 
     def create_progress_area(self):
@@ -378,6 +406,30 @@ class ModernWindow(QMainWindow):
         layout.addWidget(card)
         return widget
 
+    # ── SERVER STATUS ─────────────────────────
+
+    def check_server_status(self):
+        self.server_banner.setText("🔄 Đang kiểm tra server...")
+        self.server_banner.setObjectName("bannerChecking")
+        self._refresh_banner_style()
+
+        self._status_thread = ServerStatusThread()
+        self._status_thread.result.connect(self._on_server_status)
+        self._status_thread.start()
+
+    def _on_server_status(self, ok: bool, msg: str):
+        if ok:
+            self.server_banner.setText(f"✅ {msg}")
+            self.server_banner.setObjectName("bannerOk")
+        else:
+            self.server_banner.setText(f"❌ {msg}")
+            self.server_banner.setObjectName("bannerError")
+        self._refresh_banner_style()
+
+    def _refresh_banner_style(self):
+        self.server_banner.style().unpolish(self.server_banner)
+        self.server_banner.style().polish(self.server_banner)
+
     # ── LOGIC ─────────────────────────────────
 
     def switch_mode(self, mode: str):
@@ -416,10 +468,10 @@ class ModernWindow(QMainWindow):
         self.analyze_url_btn.setEnabled(ok)
         if ok:
             self.url_status_label.setText("✅ URL hợp lệ")
-            self.url_status_label.setStyleSheet("color:#16a34a;font-size:13px;")
+            self.url_status_label.setStyleSheet("color:#16a34a; font-size:13px;")
         else:
             self.url_status_label.setText("⚠️ Nhập URL bắt đầu bằng https://")
-            self.url_status_label.setStyleSheet("color:#ca8a04;font-size:13px;")
+            self.url_status_label.setStyleSheet("color:#ca8a04; font-size:13px;")
 
     def start_file_analysis(self):
         if not self._video_path:
@@ -512,7 +564,7 @@ class ModernWindow(QMainWindow):
             <div style="font-size:15px;font-weight:600;color:#202123;margin-bottom:10px;">🔍 Chi tiết</div>
             <div style="color:#565869;font-size:13px;line-height:1.8;">
                 <div><strong>Artifact Score:</strong> {result.get('artifact_score',0):.3f}</div>
-                <div><strong>Reality Score:</strong> {result.get('reality_score',0):.3f}</div>
+                <div><strong>Reality Score:</strong>  {result.get('reality_score',0):.3f}</div>
             </div>
         </div>
         <div style="background:#f9fafb;padding:18px;border-radius:8px;">
@@ -522,13 +574,36 @@ class ModernWindow(QMainWindow):
         for exp in result.get("explanations", []):
             html += f"<div style='margin-bottom:6px;'>• {exp}</div>"
         html += "</div></div>"
-
         self.result_display.setHtml(html)
 
     def show_error(self, error: str):
         self.progress_widget.setVisible(False)
         self._unlock_ui()
-        QMessageBox.critical(self, "Lỗi", error)
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Lỗi")
+        dlg.setMinimumWidth(480)
+        layout = QVBoxLayout(dlg)
+        layout.setSpacing(16)
+        layout.setContentsMargins(24, 24, 24, 24)
+
+        icon_lbl = QLabel("❌")
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        icon_lbl.setStyleSheet("font-size: 40px;")
+        layout.addWidget(icon_lbl)
+
+        msg = QLabel(error)
+        msg.setWordWrap(True)
+        msg.setAlignment(Qt.AlignLeft)
+        msg.setStyleSheet("color: #202123; font-size: 14px; line-height: 1.6;")
+        layout.addWidget(msg)
+
+        ok_btn = QPushButton("OK")
+        ok_btn.setObjectName("analyzeButton")
+        ok_btn.clicked.connect(dlg.accept)
+        layout.addWidget(ok_btn, alignment=Qt.AlignCenter)
+
+        dlg.exec()
 
     def reset_ui(self):
         self.results_widget.setVisible(False)
@@ -536,12 +611,16 @@ class ModernWindow(QMainWindow):
         self.analyze_file_btn.setEnabled(False)
         self._video_path = None
 
+    # ── HISTORY ───────────────────────────────
+
     def show_history(self):
         dlg = QDialog(self)
         dlg.setWindowTitle("Lịch sử phân tích")
         dlg.setMinimumSize(660, 420)
         layout = QVBoxLayout(dlg)
+
         lst = QListWidget()
+        lst.setStyleSheet("color: #202123; font-size: 13px; background: #ffffff;")
         for item in reversed(self.history[-30:]):
             ts   = item.get("timestamp", "")[:19]
             pred = item.get("prediction", "?")
@@ -550,19 +629,38 @@ class ModernWindow(QMainWindow):
             emoji = "🚨" if pred == "FAKE" else "✅"
             lst.addItem(f"{emoji}  {ts}  —  {name[:55]}  →  {pred}")
         layout.addWidget(lst)
+
         close_btn = QPushButton("Đóng")
+        close_btn.setObjectName("secondaryButton")
         close_btn.clicked.connect(dlg.close)
         layout.addWidget(close_btn)
         dlg.exec()
 
     def show_about(self):
-        QMessageBox.information(
-            self, "Về ứng dụng",
-            f"<h3>Deepfake Detector</h3>"
-            f"<p>Version 1.1.0</p>"
-            f"<p>Server: {RENDER_API_URL}</p>"
-            f"<p>Hỗ trợ phân tích qua file và link video trực tuyến.</p>"
-        )
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Về ứng dụng")
+        dlg.setMinimumWidth(400)
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        for text, style in [
+            ("🔍 Deepfake Detector", "font-size:20px;font-weight:700;color:#202123;"),
+            ("Version 1.1.0",        "font-size:14px;color:#565869;"),
+            (f"Server: {RENDER_API_URL}", "font-size:13px;color:#2563eb;"),
+            ("Hỗ trợ phân tích qua file và link video trực tuyến.", "font-size:13px;color:#565869;"),
+        ]:
+            lbl = QLabel(text)
+            lbl.setStyleSheet(text_style := style)
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setWordWrap(True)
+            layout.addWidget(lbl)
+
+        ok = QPushButton("OK")
+        ok.setObjectName("primaryButton")
+        ok.clicked.connect(dlg.accept)
+        layout.addWidget(ok, alignment=Qt.AlignCenter)
+        dlg.exec()
 
     def load_history(self):
         if os.path.exists(self.history_file):
@@ -581,18 +679,40 @@ class ModernWindow(QMainWindow):
         except Exception:
             pass
 
+    # ── STYLE ─────────────────────────────────
+
     def apply_modern_style(self):
         self.setStyleSheet("""
-            QMainWindow, QWidget { background-color: #ffffff; }
+            QMainWindow, QWidget  { background-color: #ffffff; color: #202123; }
+            QDialog               { background-color: #ffffff; }
+            QLabel                { color: #202123; }
+
             #topBar { background-color: #f7f7f8; border-bottom: 1px solid #e5e5e5; }
             #appTitle { font-size: 18px; font-weight: 600; color: #202123; }
             #topBarButton {
                 background: transparent; border: none; color: #565869;
-                padding: 8px 16px; border-radius: 6px; font-size: 14px;
+                padding: 8px 14px; border-radius: 6px; font-size: 13px;
             }
-            #topBarButton:hover { background-color: #ececf1; }
+            #topBarButton:hover { background-color: #ececf1; color: #202123; }
+
             #welcome  { font-size: 30px; font-weight: 700; color: #202123; }
             #subtitle { font-size: 15px; color: #565869; }
+
+            /* Server banner */
+            #bannerChecking {
+                background: #f3f4f6; color: #374151;
+                padding: 8px 16px; border-radius: 8px; font-size: 13px;
+            }
+            #bannerOk {
+                background: #dcfce7; color: #166534;
+                padding: 8px 16px; border-radius: 8px; font-size: 13px;
+            }
+            #bannerError {
+                background: #fee2e2; color: #991b1b;
+                padding: 8px 16px; border-radius: 8px; font-size: 13px;
+            }
+
+            /* Mode toggle */
             #modeActive {
                 background: #2563eb; color: white; border: none;
                 padding: 10px 28px; font-size: 14px; font-weight: 600;
@@ -604,6 +724,8 @@ class ModernWindow(QMainWindow):
                 border-radius: 0 8px 8px 0;
             }
             #modeInactive:hover { background: #e5e7eb; }
+
+            /* Panels */
             #uploadArea {
                 background: #ffffff; border: 2px dashed #d1d5db;
                 border-radius: 12px; min-height: 260px;
@@ -613,41 +735,48 @@ class ModernWindow(QMainWindow):
                 background: #ffffff; border: 2px dashed #d1d5db;
                 border-radius: 12px; min-height: 260px;
             }
+
             #urlInput {
                 padding: 12px 14px; border: 1.5px solid #d1d5db;
                 border-radius: 8px; font-size: 14px; color: #202123;
                 background: #fafafa;
             }
             #urlInput:focus { border-color: #2563eb; background: #ffffff; }
+
             #pasteButton {
                 background: #f3f4f6; color: #374151; border: 1px solid #d1d5db;
                 padding: 10px 18px; border-radius: 8px; font-size: 13px; min-width: 70px;
             }
             #pasteButton:hover { background: #e5e7eb; }
-            #platformHint { font-size: 12px; color: #9ca3af; }
-            #uploadIcon   { font-size: 60px; }
-            #uploadText   { font-size: 15px; font-weight: 600; color: #202123; }
+
+            #platformHint  { font-size: 12px; color: #9ca3af; }
+            #uploadIcon    { font-size: 60px; }
+            #uploadText    { font-size: 15px; font-weight: 600; color: #202123; }
             #uploadSubtext { font-size: 13px; color: #6e6e80; }
             #selectedFile  { font-size: 13px; color: #10a37f; font-weight: 500; }
+
             #primaryButton {
                 background: #10a37f; color: white; border: none;
                 padding: 12px 28px; border-radius: 8px;
                 font-size: 14px; font-weight: 600; min-width: 140px;
             }
             #primaryButton:hover { background: #0d8f6f; }
+
             #analyzeButton {
                 background: #2563eb; color: white; border: none;
                 padding: 12px 28px; border-radius: 8px;
                 font-size: 14px; font-weight: 600; min-width: 200px;
             }
             #analyzeButton:hover:enabled { background: #1d4ed8; }
-            #analyzeButton:disabled { background: #9ca3af; }
+            #analyzeButton:disabled      { background: #9ca3af; }
+
             #secondaryButton {
                 background: #f7f7f8; color: #202123; border: 1px solid #d1d5db;
                 padding: 10px 20px; border-radius: 8px;
                 font-size: 14px; font-weight: 500;
             }
             #secondaryButton:hover { background: #ececf1; }
+
             #progressArea {
                 background: #f9fafb; border-radius: 12px; border: 1px solid #e5e5e5;
             }
@@ -657,15 +786,45 @@ class ModernWindow(QMainWindow):
                 border-radius: 4px; max-height: 8px;
             }
             #modernProgress::chunk { background: #10a37f; border-radius: 4px; }
+
             #resultCard {
                 background: #ffffff; border: 1px solid #e5e5e5; border-radius: 12px;
             }
             #resultDisplay {
                 background: #ffffff; border: none; font-size: 14px; color: #202123;
             }
-            QScrollArea { border: none; }
+
+            QScrollArea  { border: none; }
+            QListWidget  { color: #202123; background: #ffffff; border: 1px solid #e5e5e5; border-radius: 8px; }
         """)
 
+
+# ─────────────────────────────────────────────
+# SERVER STATUS THREAD
+# ─────────────────────────────────────────────
+
+class ServerStatusThread(QThread):
+    result = Signal(bool, str)
+
+    def run(self):
+        try:
+            r = requests.get(f"{RENDER_API_URL}/health", timeout=15)
+            data = r.json()
+            if data.get("model_loaded"):
+                uptime = round(data.get("uptime_seconds", 0))
+                self.result.emit(True, f"Server online · Model đã load · Uptime {uptime}s")
+            else:
+                self.result.emit(False,
+                    "Server online nhưng MODEL CHƯA LOAD — "
+                    "Cần push models/alpha.pkl lên GitHub rồi redeploy!"
+                )
+        except Exception as e:
+            self.result.emit(False, f"Không kết nối được server: {str(e)[:80]}")
+
+
+# ─────────────────────────────────────────────
+# ENTRY POINT
+# ─────────────────────────────────────────────
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
