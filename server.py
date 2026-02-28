@@ -61,12 +61,13 @@ def initialize_models():
         
     except Exception as e:
         logger.error(f"❌ Failed to load models: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
 @app.route('/')
 def home():
-    """Home endpoint"""
     return jsonify({
         'name': 'Deepfake Detector API',
         'version': '1.0.0',
@@ -81,7 +82,6 @@ def home():
 
 @app.route('/health')
 def health_check():
-    """Health check endpoint - for keep-alive pings"""
     uptime = time.time() - start_time
     return jsonify({
         'status': 'healthy',
@@ -94,83 +94,53 @@ def health_check():
 
 @app.route('/ping')
 def ping():
-    """Alternative ping endpoint"""
     return 'pong', 200
 
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_video():
-    """Main analysis endpoint"""
     try:
-        # Check if models loaded
         if classifier is None:
-            return jsonify({
-                'success': False,
-                'error': 'Models not loaded'
-            }), 500
+            return jsonify({'success': False, 'error': 'Models not loaded'}), 500
         
-        # Check if video file in request
         if 'video' not in request.files:
-            return jsonify({
-                'success': False,
-                'error': 'No video file provided'
-            }), 400
+            return jsonify({'success': False, 'error': 'No video file provided'}), 400
         
         video_file = request.files['video']
         
         if video_file.filename == '':
-            return jsonify({
-                'success': False,
-                'error': 'Empty filename'
-            }), 400
+            return jsonify({'success': False, 'error': 'Empty filename'}), 400
         
-        # Check file size
         video_file.seek(0, os.SEEK_END)
         file_size = video_file.tell()
         video_file.seek(0)
         
         if file_size > MAX_FILE_SIZE:
-            return jsonify({
-                'success': False,
-                'error': f'File too large (max {MAX_FILE_SIZE // 1024 // 1024}MB)'
-            }), 400
+            return jsonify({'success': False, 'error': f'File too large (max {MAX_FILE_SIZE // 1024 // 1024}MB)'}), 400
         
         logger.info(f"📥 Received video: {video_file.filename} ({file_size / 1024 / 1024:.1f}MB)")
         
-        # Save to temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
             video_file.save(tmp_file.name)
             temp_video_path = tmp_file.name
         
         try:
-            # Extract features
             logger.info("🔍 Extracting features...")
             features_dict, metadata = feature_extractor.extract_from_video(temp_video_path)
             
-            # Convert to vector
             feature_names = classifier.feature_names or feature_extractor.get_feature_names()
             feature_vector = feature_extractor.features_to_vector(features_dict, feature_names)
             X = feature_vector.reshape(1, -1)
             
-            # Predict
             logger.info("🤖 Making prediction...")
             pred, prob = classifier.predict(X)
             
-            # Compute component scores
             artifact_score = fusion_engine.compute_artifact_score(features_dict)
             reality_score = fusion_engine.compute_reality_score(features_dict)
             
-            # Fusion
-            fusion_result = fusion_engine.fuse_scores(
-                artifact_score,
-                reality_score,
-                0.5  # Default stress score
-            )
-            
-            # Generate explanations
+            fusion_result = fusion_engine.fuse_scores(artifact_score, reality_score, 0.5)
             explanations = fusion_engine.generate_explanation(features_dict, fusion_result)
             
-            # Prepare response
             response = {
                 'success': True,
                 'prediction': 'FAKE' if pred[0] == 1 else 'REAL',
@@ -188,11 +158,9 @@ def analyze_video():
             }
             
             logger.info(f"✅ Analysis complete: {response['prediction']} ({response['probability_fake']:.1%})")
-            
             return jsonify(response)
         
         finally:
-            # Clean up temp file
             try:
                 os.unlink(temp_video_path)
             except:
@@ -202,16 +170,11 @@ def analyze_video():
         logger.error(f"❌ Error during analysis: {e}")
         import traceback
         traceback.print_exc()
-        
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/stats')
 def get_stats():
-    """Get server statistics"""
     uptime = time.time() - start_time
     return jsonify({
         'model_path': MODEL_PATH,
@@ -223,31 +186,12 @@ def get_stats():
     })
 
 
+# ✅ FIX QUAN TRỌNG: Gọi initialize_models() ở module level
+# để gunicorn load được model khi import module
+initialize_models()
+
+
 if __name__ == '__main__':
-    # Initialize models on startup
-    if not initialize_models():
-        print("❌ Failed to initialize models. Exiting.")
-        exit(1)
-    
-    # Get port from environment
     port = int(os.environ.get('PORT', 5000))
-    
-    print("\n" + "="*60)
-    print("🚀 DEEPFAKE DETECTOR API SERVER")
-    print("="*60)
-    print(f"Model: {MODEL_PATH}")
-    print(f"Config: {CONFIG_PATH}")
-    print(f"Port: {port}")
-    print(f"Max file size: {MAX_FILE_SIZE // 1024 // 1024}MB")
-    print("="*60)
-    print("\nEndpoints:")
-    print("  GET  /              - API info")
-    print("  GET  /health        - Health check")
-    print("  GET  /ping          - Simple ping")
-    print("  POST /api/analyze   - Analyze video")
-    print("  GET  /api/stats     - Server stats")
-    print("\nServer starting...")
-    print("="*60 + "\n")
-    
-    # Run Flask app
+    print(f"\n🚀 Starting server on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
