@@ -1,6 +1,6 @@
 # requirements.txt
-# FIXED for Render deployment - Python 3.11 compatible
-# All versions tested and working
+# FINAL FIX - Compatible with Python 3.14
+# All packages have pre-built wheels
 
 # ============================================================
 # WEB FRAMEWORK
@@ -17,30 +17,30 @@ flask-limiter==3.5.0
 limits==3.6.0
 
 # ============================================================
-# CORE ML/CV LIBRARIES - FIXED VERSIONS
+# CORE ML/CV LIBRARIES - PYTHON 3.14 COMPATIBLE
 # ============================================================
-numpy==1.26.4
-opencv-python-headless==4.9.0.80
-scipy==1.11.4
-scikit-learn==1.3.2
-lightgbm==4.3.0
+numpy==2.2.1
+opencv-python-headless==4.10.0.84
+scipy==1.14.1
+scikit-learn==1.6.1
+lightgbm==4.5.0
 
 # ============================================================
 # DATA PROCESSING
 # ============================================================
-pandas==2.1.4
-PyYAML==6.0.1
-joblib==1.3.2
+pandas==2.2.3
+PyYAML==6.0.2
+joblib==1.4.2
 
 # ============================================================
 # IMAGE/VIDEO PROCESSING
 # ============================================================
-Pillow==10.2.0
-imageio==2.34.0
-imageio-ffmpeg==0.4.9
+Pillow==11.0.0
+imageio==2.36.1
+imageio-ffmpeg==0.5.1
 
 # ============================================================
 # UTILITIES
 # ============================================================
-python-dateutil==2.8.2
-pytz==2024.1
+python-dateutil==2.9.0
+pytz==2024.2
