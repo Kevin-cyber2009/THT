@@ -1,10 +1,40 @@
 services:
+  # ── 1. Flask API (nhận request, trả job_id ngay) ──────────────────
   - type: web
     name: deepfake-api
-    env: python
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60 --preload
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          name: deepfake-redis
+          type: redis
+          property: connectionString
+      - key: MODEL_PATH
+        value: models/alpha.pkl
+      - key: CONFIG_PATH
+        value: config.yaml
+
+  # ── 2. Celery Worker (xử lý video nặng, không timeout) ───────────
+  - type: worker
+    name: deepfake-worker
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A server.celery_app worker --loglevel=info --concurrency=1
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          name: deepfake-redis
+          type: redis
+          property: connectionString
+      - key: MODEL_PATH
+        value: models/alpha.pkl
+      - key: CONFIG_PATH
+        value: config.yaml
+
+  # ── 3. Redis (message broker + result backend) ───────────────────
+  - type: redis
+    name: deepfake-redis
     plan: free
-    buildCommand: >
-      pip install --upgrade pip setuptools wheel &&
-      pip install torch==2.9.0+cpu torchvision==0.24.0+cpu --index-url https://download.pytorch.org/whl/cpu &&
-      pip install -r requirements-server.txt --prefer-binary
-    startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --workers 2 --timeout 300
+    maxmemoryPolicy: allkeys-lru

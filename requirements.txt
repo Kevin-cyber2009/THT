@@ -28,3 +28,7 @@ gunicorn>=23.0.0
 
 # Utilities
 tqdm>=4.67.1
+
+# Thêm vào requirements.txt hiện tại của bạn
+celery[redis]==5.3.6
+redis==5.0.1
