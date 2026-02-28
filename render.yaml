@@ -5,9 +5,6 @@ services:
     plan: free
     buildCommand: >
       pip install --upgrade pip setuptools wheel &&
-      pip install torch==2.1.0+cpu torchvision==0.16.0+cpu --index-url https://download.pytorch.org/whl/cpu &&
-      pip install -r requirements-server.txt --only-binary=:all: --prefer-binary
+      pip install torch==2.9.0+cpu torchvision==0.24.0+cpu --index-url https://download.pytorch.org/whl/cpu &&
+      pip install -r requirements-server.txt --prefer-binary
     startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --workers 2 --timeout 300
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0

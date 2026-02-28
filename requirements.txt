@@ -1,46 +1,33 @@
-# requirements.txt
-# FINAL FIX - Compatible with Python 3.14
-# All packages have pre-built wheels
+# requirements-server.txt - Deploy lên RENDER (Python 3.14, NO scipy)
 
-# ============================================================
-# WEB FRAMEWORK
-# ============================================================
-flask==3.0.3
-flask-cors==4.0.0
-gunicorn==21.2.0
-werkzeug==3.0.1
+# Build tools
+setuptools>=68.0.0
+wheel>=0.41.0
 
-# ============================================================
-# SECURITY & RATE LIMITING
-# ============================================================
-flask-limiter==3.5.0
-limits==3.6.0
+# Ảnh / video
+opencv-python-headless>=4.10.0.84
+numpy>=2.1.0
+Pillow>=11.0.0
 
-# ============================================================
-# CORE ML/CV LIBRARIES - PYTHON 3.14 COMPATIBLE
-# ============================================================
-numpy==2.2.1
-opencv-python-headless==4.10.0.84
-scipy==1.14.1
-scikit-learn==1.6.1
-lightgbm==4.5.0
+# Machine Learning
+scikit-learn>=1.5.2
+lightgbm>=4.5.0
+joblib>=1.4.2
 
-# ============================================================
-# DATA PROCESSING
-# ============================================================
-pandas==2.2.3
-PyYAML==6.0.2
-joblib==1.4.2
+# Deep Learning (CPU - torch/torchvision cài riêng qua buildCommand)
+# torch và torchvision KHÔNG liệt kê ở đây để tránh xung đột index
 
-# ============================================================
-# IMAGE/VIDEO PROCESSING
-# ============================================================
-Pillow==11.0.0
-imageio==2.36.1
-imageio-ffmpeg==0.5.1
+# Data & Config
+pandas>=2.2.3
+PyYAML>=6.0.2
 
-# ============================================================
-# UTILITIES
-# ============================================================
-python-dateutil==2.9.0
-pytz==2024.2
+# PDF
+reportlab>=4.2.5
+
+# Web server
+flask>=3.1.0
+flask-cors>=5.0.0
+gunicorn>=23.0.0
+
+# Utilities
+tqdm>=4.67.1
