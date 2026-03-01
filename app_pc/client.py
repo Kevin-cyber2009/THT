@@ -25,12 +25,41 @@ os.chdir(BASE_PATH)
 
 RENDER_API_URL = "https://tht-ddoj.onrender.com"
 TEMP_DIR       = os.path.join(BASE_PATH, "temp_downloads")
-POLL_INTERVAL  = 3   # seconds between polls
-POLL_TIMEOUT   = 600 # max 10 phút chờ kết quả
+POLL_INTERVAL  = 3    # seconds between polls
+POLL_TIMEOUT   = 600  # max 10 phút
 
 
 # ─────────────────────────────────────────────
-# THREADS
+# SERVER STATUS THREAD
+# ─────────────────────────────────────────────
+
+class ServerStatusThread(QThread):
+    result = Signal(bool, str)
+
+    def run(self):
+        try:
+            r    = requests.get(f"{RENDER_API_URL}/health", timeout=15)
+            data = r.json()
+
+            model_ok = data.get("model_loaded", False)
+            uptime   = round(data.get("uptime_seconds", 0))
+
+            if not model_ok:
+                self.result.emit(False, "Server online nhưng model chưa load!")
+                return
+
+            self.result.emit(True, f"Server online · Model ✅ · Uptime {uptime}s")
+
+        except requests.exceptions.ConnectionError:
+            self.result.emit(False, "Không kết nối được server — kiểm tra internet.")
+        except requests.exceptions.Timeout:
+            self.result.emit(False, "Server không phản hồi (đang ngủ?) — thử lại sau 60s.")
+        except Exception as e:
+            self.result.emit(False, f"Lỗi: {str(e)[:80]}")
+
+
+# ─────────────────────────────────────────────
+# DOWNLOAD THREAD
 # ─────────────────────────────────────────────
 
 class DownloadThread(QThread):
@@ -80,37 +109,36 @@ class DownloadThread(QThread):
             self.error.emit(str(e))
 
 
+# ─────────────────────────────────────────────
+# ANALYSIS THREAD
+# ─────────────────────────────────────────────
+
 class AnalysisThread(QThread):
-    """
-    Luồng mới (async):
-      1. Upload video → nhận job_id ngay
-      2. Poll /api/result/<job_id> cho đến khi done/error
-    """
     progress = Signal(str)
     finished = Signal(dict)
     error    = Signal(str)
 
     def __init__(self, video_path: str):
         super().__init__()
-        self.video_path  = video_path
-        self._cancelled  = False
+        self.video_path = video_path
+        self._cancelled = False
 
     def cancel(self):
         self._cancelled = True
 
     def run(self):
         try:
-            # ── Bước 0: Kiểm tra server ────────────────────────────
+            # ── Bước 0: Kiểm tra server ─────────────────────────
             self.progress.emit("Đang kết nối server...")
             try:
                 health = requests.get(f"{RENDER_API_URL}/health", timeout=60)
                 data   = health.json()
 
-                if data.get("redis") == "disconnected":
+                if not data.get("model_loaded", False):
                     self.error.emit(
-                        "⚠️ Server online nhưng Redis bị mất kết nối!\n\n"
-                        "Vào Render dashboard kiểm tra service 'deepfake-redis'\n"
-                        "có đang chạy không rồi thử lại."
+                        "⚠️ Server online nhưng model chưa load!\n\n"
+                        "Kiểm tra file models/alpha.pkl có trong repo không.\n"
+                        "Nếu file > 100MB cần dùng Git LFS."
                     )
                     return
 
@@ -131,35 +159,31 @@ class AnalysisThread(QThread):
                 )
                 return
 
-            # ── Bước 1: Upload video, nhận job_id ngay ─────────────
-            self.progress.emit("Đang upload video lên server...")
+            # ── Bước 1: Upload video, nhận job_id ngay ──────────
             file_size_mb = os.path.getsize(self.video_path) / 1024 / 1024
+            self.progress.emit(f"Đang upload video ({file_size_mb:.1f}MB)...")
 
             with open(self.video_path, "rb") as f:
                 response = requests.post(
                     f"{RENDER_API_URL}/api/analyze",
                     files={"video": (Path(self.video_path).name, f, "video/mp4")},
-                    timeout=120,  # chỉ cần đợi upload xong
+                    timeout=120,
                 )
 
             if response.status_code not in (200, 202):
-                self.error.emit(
-                    f"Server lỗi {response.status_code}:\n{response.text[:300]}"
-                )
+                self.error.emit(f"Server lỗi {response.status_code}:\n{response.text[:300]}")
                 return
 
             resp_json = response.json()
             if not resp_json.get("success"):
-                self.error.emit(
-                    f"Upload thất bại:\n{resp_json.get('error', 'Lỗi không xác định')}"
-                )
+                self.error.emit(f"Upload thất bại:\n{resp_json.get('error', 'Lỗi không xác định')}")
                 return
 
             job_id   = resp_json["job_id"]
             poll_url = f"{RENDER_API_URL}/api/result/{job_id}"
-            self.progress.emit(f"✅ Upload xong ({file_size_mb:.1f}MB) — Đang xử lý AI...")
+            self.progress.emit("✅ Upload xong — Đang phân tích AI...")
 
-            # ── Bước 2: Poll kết quả ────────────────────────────────
+            # ── Bước 2: Poll kết quả ─────────────────────────────
             STEP_LABELS = {
                 "extracting_features": "⚙️ Đang trích xuất đặc trưng video...",
                 "predicting":          "🤖 Đang phân tích AI...",
@@ -180,7 +204,6 @@ class AnalysisThread(QThread):
                     r    = requests.get(poll_url, timeout=15)
                     data = r.json()
                 except Exception:
-                    # Mạng tạm lỗi, thử lại
                     self.progress.emit(f"⏳ Đang chờ kết quả... ({elapsed}s)")
                     continue
 
@@ -194,16 +217,14 @@ class AnalysisThread(QThread):
                     return
 
                 elif status == "error":
-                    self.error.emit(
-                        f"Phân tích thất bại:\n{data.get('error', 'Lỗi không xác định')}"
-                    )
+                    self.error.emit(f"Phân tích thất bại:\n{data.get('error', 'Lỗi không xác định')}")
                     return
 
                 elif status in ("pending", "queued"):
                     self.progress.emit(f"⏳ Đang chờ trong hàng đợi... ({elapsed}s)")
 
                 elif status == "processing":
-                    step = data.get("step", "")
+                    step  = data.get("step", "")
                     label = STEP_LABELS.get(step, f"⚙️ Đang xử lý... ({elapsed}s)")
                     if step != last_step:
                         self.progress.emit(label)
@@ -212,7 +233,6 @@ class AnalysisThread(QThread):
                 else:
                     self.progress.emit(f"⏳ {status}... ({elapsed}s)")
 
-            # Hết timeout
             self.error.emit(
                 f"⏱️ Timeout sau {POLL_TIMEOUT // 60} phút.\n"
                 "Video có thể quá nặng hoặc server đang quá tải.\n"
@@ -221,42 +241,6 @@ class AnalysisThread(QThread):
 
         except Exception as e:
             self.error.emit(f"Lỗi không xác định:\n{str(e)}")
-
-
-# ─────────────────────────────────────────────
-# SERVER STATUS THREAD
-# ─────────────────────────────────────────────
-
-class ServerStatusThread(QThread):
-    result = Signal(bool, str)
-
-    def run(self):
-        try:
-            r    = requests.get(f"{RENDER_API_URL}/health", timeout=15)
-            data = r.json()
-
-            redis_ok = data.get("redis") == "connected"
-            uptime   = round(data.get("uptime_seconds", 0))
-
-            if not redis_ok:
-                self.result.emit(
-                    False,
-                    "Server online nhưng Redis mất kết nối — "
-                    "Kiểm tra service 'deepfake-redis' trên Render!"
-                )
-                return
-
-            self.result.emit(
-                True,
-                f"Server online · Redis ✅ · Uptime {uptime}s"
-            )
-
-        except requests.exceptions.ConnectionError:
-            self.result.emit(False, "Không kết nối được server — kiểm tra internet.")
-        except requests.exceptions.Timeout:
-            self.result.emit(False, "Server không phản hồi (đang ngủ?) — thử lại sau 60s.")
-        except Exception as e:
-            self.result.emit(False, f"Lỗi: {str(e)[:80]}")
 
 
 # ─────────────────────────────────────────────
@@ -269,10 +253,10 @@ class ModernWindow(QMainWindow):
         self.setWindowTitle("Deepfake Detector")
         self.setMinimumSize(960, 700)
 
-        self.history_file = os.path.join(BASE_PATH, "history.json")
-        self.history      = self.load_history()
-        self._input_mode  = "file"
-        self._video_path  = None
+        self.history_file     = os.path.join(BASE_PATH, "history.json")
+        self.history          = self.load_history()
+        self._input_mode      = "file"
+        self._video_path      = None
         self._analysis_thread = None
 
         self.setup_ui()
@@ -289,7 +273,7 @@ class ModernWindow(QMainWindow):
         root.setSpacing(0)
         root.addWidget(self.create_top_bar())
 
-        scroll  = QScrollArea()
+        scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
 
@@ -482,11 +466,10 @@ class ModernWindow(QMainWindow):
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setObjectName("modernProgress")
-        self.progress_bar.setRange(0, 0)   # indeterminate
+        self.progress_bar.setRange(0, 0)
         self.progress_bar.setTextVisible(False)
         layout.addWidget(self.progress_bar)
 
-        # Nút huỷ
         self.cancel_btn = QPushButton("✕  Huỷ")
         self.cancel_btn.setObjectName("cancelButton")
         self.cancel_btn.clicked.connect(self.cancel_analysis)
@@ -666,8 +649,8 @@ class ModernWindow(QMainWindow):
 
         meta       = result.get("metadata", {})
         num_frames = meta.get("num_frames", "N/A")
-        duration   = meta.get("duration", "N/A")
-        fps        = meta.get("fps", "N/A")
+        duration   = meta.get("duration",   "N/A")
+        fps        = meta.get("fps",         "N/A")
 
         html = f"""
         <div style="text-align:center;padding:28px 20px;background:{color};color:white;border-radius:10px;margin-bottom:16px;">
@@ -695,7 +678,7 @@ class ModernWindow(QMainWindow):
             <div style="font-size:15px;font-weight:600;color:#202123;margin-bottom:10px;">🔍 Chi tiết</div>
             <div style="color:#565869;font-size:13px;line-height:1.8;">
                 <div><strong>Artifact Score:</strong> {result.get('artifact_score', 0):.3f}</div>
-                <div><strong>Reality Score:</strong>  {result.get('reality_score', 0):.3f}</div>
+                <div><strong>Reality Score:</strong>  {result.get('reality_score',  0):.3f}</div>
                 <div><strong>Frames phân tích:</strong> {num_frames}</div>
                 <div><strong>Thời lượng:</strong> {duration}s</div>
                 <div><strong>FPS:</strong> {fps}</div>
@@ -778,10 +761,10 @@ class ModernWindow(QMainWindow):
         layout.setSpacing(12)
 
         for text, style in [
-            ("🔍 Deepfake Detector",    "font-size:20px;font-weight:700;color:#202123;"),
-            ("Version 2.0.0 — Async",   "font-size:14px;color:#565869;"),
-            (f"Server: {RENDER_API_URL}", "font-size:13px;color:#2563eb;"),
-            ("Async mode: upload → poll kết quả. Không timeout dù video nặng.", "font-size:13px;color:#565869;"),
+            ("🔍 Deepfake Detector",                               "font-size:20px;font-weight:700;color:#202123;"),
+            ("Version 2.0.0 — Async Threading",                    "font-size:14px;color:#565869;"),
+            (f"Server: {RENDER_API_URL}",                          "font-size:13px;color:#2563eb;"),
+            ("Async mode: upload → poll kết quả. Không timeout.", "font-size:13px;color:#565869;"),
         ]:
             lbl = QLabel(text)
             lbl.setStyleSheet(style)
@@ -934,8 +917,8 @@ class ModernWindow(QMainWindow):
                 background: #ffffff; border: none; font-size: 14px; color: #202123;
             }
 
-            QScrollArea  { border: none; }
-            QListWidget  {
+            QScrollArea { border: none; }
+            QListWidget {
                 color: #202123; background: #ffffff;
                 border: 1px solid #e5e5e5; border-radius: 8px;
             }

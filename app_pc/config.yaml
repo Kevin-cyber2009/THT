@@ -1,0 +1,137 @@
+# config.yaml
+# Cấu hình UNIFIED cho Hybrid++ Detector
+# Tự động chuyển Traditional <-> Hybrid dựa vào use_deep_features
+
+# === PREPROCESSING ===
+preprocessing:
+  fps: 6
+  resize_width: 512
+  resize_height: 288
+  max_frames: 1000
+  color_space: 'RGB'
+
+# === FORENSIC ANALYSIS ===
+forensic:
+  fft_components: 10
+  dct_components: 10
+  spectrum_bins: 8
+  prnu_denoise_kernel: 5
+  prnu_method: 'bilateral'
+  optical_flow_quality: 0.01
+  optical_flow_min_distance: 10
+  optical_flow_block_size: 7
+
+# === REALITY ENGINE ===
+reality_engine:
+  entropy_scales: 4
+  entropy_window_size: 16
+  fractal_box_sizes: [2, 4, 8, 16, 32]
+  fractal_edge_threshold_low: 50
+  fractal_edge_threshold_high: 150
+  causal_delay_embedding: 3
+  causal_prediction_horizon: 1
+  causal_model_type: 'linear'
+  compression_codec: 'libx264'
+  compression_preset: 'medium'
+  compression_chunk_seconds: 1.0
+
+# === STRESS LAB ===
+stress_lab:
+  light_jitter_strength: 0.1
+  blur_kernel_range: [3, 7]
+  affine_rotation_range: [-5, 5]
+  affine_scale_range: [0.95, 1.05]
+  compression_levels: [23, 28, 35]
+  shuffle_window_size: 10
+  noise_std: 0.02
+  stability_threshold_low: 0.7
+  stability_threshold_high: 0.9
+
+# === DEEP LEARNING ===
+deep_learning:
+  enabled: true              # true = Hybrid mode, false = Traditional mode
+  model_type: 'resnet50'     # resnet18, resnet50, efficientnet_b0, efficientnet_b3, vgg16
+  use_gpu: true              # true = use GPU if available, false = CPU only
+  sample_frames: 10          # Số frames để extract deep features
+  
+  # Ensemble multiple models (advanced)
+  use_ensemble: true
+  ensemble_models:
+    - 'resnet50'
+    - 'efficientnet_b0'
+
+# === FEATURES ===
+features:
+  expected_dimension: 46     # Auto-adjusted internally
+  normalization: 'standard'
+  use_deep_features: true    # Must match deep_learning.enabled
+
+# === CLASSIFIER ===
+classifier:
+  model_type: 'lightgbm'
+  
+  # LightGBM params
+  lgbm_num_leaves: 50
+  lgbm_max_depth: 8
+  lgbm_learning_rate: 0.03
+  lgbm_n_estimators: 150
+  lgbm_min_child_samples: 15
+  
+  # SVM params
+  svm_kernel: 'rbf'
+  svm_C: 1.0
+  svm_gamma: 'scale'
+  
+  # Calibration
+  calibration_method: 'isotonic'
+  calibration_cv: 5
+
+# === FUSION ===
+fusion:
+  # Weights auto-adjust dựa vào mode:
+  # Traditional: artifact=0.4, reality=0.35, stress=0.25
+  # Hybrid: artifact=0.3, reality=0.3, stress=0.2, deep=0.2
+  artifact_weight: 0.30
+  reality_weight: 0.30
+  stress_weight: 0.20
+  deep_weight: 0.20         # Only used if deep learning enabled
+  
+  threshold_fake: 0.5
+  confidence_threshold_high: 0.7
+  confidence_threshold_low: 0.3
+
+# === EVALUATION ===
+evaluation:
+  cv_folds: 5
+  test_size: 0.2
+  random_seed: 42
+  metrics:
+    - 'auc'
+    - 'precision'
+    - 'recall'
+    - 'f1'
+  target_tpr: 0.9
+
+# === REPORT ===
+report:
+  pdf_page_size: 'A4'
+  plot_dpi: 100
+  include_plots: true
+  plot_style: 'seaborn-v0_8-darkgrid'
+
+# === LOGGING ===
+logging:
+  level: 'INFO'
+  log_dir: 'logs'
+  log_file: 'detector.log'
+  console_output: true
+
+# === PATHS ===
+paths:
+  models_dir: 'models'
+  output_dir: 'output'
+  data_dir: 'data'
+  cache_dir: '.cache'
+
+# === VERSION ===
+version: '1.5.0-unified'
