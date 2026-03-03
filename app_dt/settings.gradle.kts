@@ -3,6 +3,7 @@ pluginManagement {
         gradlePluginPortal()
         google()
         mavenCentral()
+        maven("https://chaquo.com/maven")  // ← thêm dòng này
     }
 }
 
