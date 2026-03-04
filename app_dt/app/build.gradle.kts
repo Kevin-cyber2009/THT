@@ -10,36 +10,24 @@ android {
 
     defaultConfig {
         applicationId = "com.application.AIChecker"
-        minSdk = 21
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            abiFilters += setOf("arm64-v8a", "x86_64")
         }
+    }
 
-        python {
-            version = "3.11"
-            pip {
-                install("numpy==1.24.3")
-                install("opencv-python-headless==4.8.1.78")
-                install("scikit-learn==1.3.2")
-                install("lightgbm==4.3.0")
-                install("pyyaml==6.0.1")
-                install("joblib==1.3.2")
-                install("Pillow==10.1.0")
-            }
-        }
+    // ✅ BẮT BUỘC: bật ViewBinding
+    buildFeatures {
+        viewBinding = true
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
         }
     }
 
@@ -52,9 +40,23 @@ android {
         jvmTarget = "1.8"
     }
 
-    sourceSets {
-        getByName("main") {
-            python.srcDir("src/main/python")
+    chaquopy {
+        defaultConfig {
+            version = "3.8"
+
+            // ✅ Trỏ đúng Python 3.12 trên máy bạn
+            buildPython("C:/Users/ASUS/AppData/Local/Programs/Python/Python312/python.exe")
+
+            pip {
+                install("numpy")
+                install("scikit-learn")
+                // ✅ lightgbm không có prebuilt wheel cho Android
+                // Dùng phiên bản cũ hơn có sẵn trên Chaquopy mirror
+                install("lightgbm==3.2.1")
+                install("opencv-python-headless")
+                install("yt-dlp")
+                install("pillow")
+            }
         }
     }
 }
@@ -63,7 +65,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    implementation("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
     implementation("androidx.cardview:cardview:1.0.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }

@@ -1,10 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="bg_dark">#12151A</color>
+    <color name="surface">#1C212B</color>
+    <color name="card">#242935</color>
+    <color name="border">#333A4D</color>
+    <color name="accent">#3D94FF</color>
+    <color name="accent2">#61D1B8</color>
+    <color name="danger">#FF5459</color>
+    <color name="danger_dim">#2A0E0F</color>
+    <color name="success">#40D78F</color>
+    <color name="success_dim">#0A2A1A</color>
+    <color name="warning">#FFB838</color>
+    <color name="text_primary">#EBEDF2</color>
+    <color name="text_secondary">#848FA3</color>
+    <color name="text_muted">#4D5466</color>
     <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
     <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 </resources>

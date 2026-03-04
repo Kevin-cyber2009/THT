@@ -1,111 +1,236 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="24dp"
-    android:gravity="center_horizontal"
-    android:background="#F5F5F5">
+    android:background="@color/bg_dark"
+    tools:context=".MainActivity">
 
-    <TextView
-        android:id="@+id/titleText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="🤖 AIChecker"
-        android:textSize="32sp"
-        android:textStyle="bold"
-        android:textColor="#1976D2"
-        android:layout_marginTop="48dp"/>
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="AI-Powered Deepfake Detection"
-        android:textSize="14sp"
-        android:textColor="#666666"
-        android:layout_marginTop="8dp"/>
-
-    <Button
-        android:id="@+id/selectButton"
+    <!-- TOP BAR -->
+    <LinearLayout
+        android:id="@+id/topBar"
         android:layout_width="match_parent"
         android:layout_height="60dp"
-        android:text="📹 SELECT VIDEO"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:layout_marginTop="64dp"
-        android:enabled="false"/>
+        android:background="@color/surface"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="18dp"
+        android:paddingEnd="18dp">
+        <View android:layout_width="10dp" android:layout_height="10dp"
+            android:background="@drawable/circle_accent" android:layout_marginEnd="10dp"/>
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:text="DeepfakeDetector"
+            android:textColor="@color/text_primary" android:textSize="17sp" android:textStyle="bold"/>
+        <TextView android:id="@+id/tvBadge" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:text="* LOADING"
+            android:textColor="@color/warning" android:textSize="11sp" android:textStyle="bold"/>
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/statusText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Initializing..."
-        android:textSize="14sp"
-        android:textColor="#666666"
-        android:layout_marginTop="24dp"
-        android:gravity="center"/>
+    <!-- Accent line -->
+    <View android:layout_width="110dp" android:layout_height="2dp"
+        android:layout_marginTop="60dp" android:background="@color/accent"/>
 
-    <ProgressBar
-        android:id="@+id/progressBar"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:visibility="gone"
-        android:layout_marginTop="32dp"/>
+    <!-- BODY -->
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scrollView"
+        android:layout_width="match_parent" android:layout_height="match_parent"
+        android:layout_marginTop="62dp" android:fillViewport="true">
 
-    <androidx.cardview.widget.CardView
-        android:id="@+id/resultCard"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        android:layout_marginTop="40dp"
-        app:cardCornerRadius="16dp"
-        app:cardElevation="8dp"
-        android:background="@android:color/white">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="16dp">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="24dp"
-            android:gravity="center">
+            <!-- Status -->
+            <TextView android:id="@+id/tvStatus" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:gravity="center"
+                android:paddingBottom="6dp" android:text="Initializing AI model..."
+                android:textColor="@color/text_secondary" android:textSize="12sp"/>
 
-            <TextView
-                android:id="@+id/resultText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="RESULT"
-                android:textSize="28sp"
-                android:textStyle="bold"
-                android:gravity="center"/>
+            <!-- Progress -->
+            <ProgressBar android:id="@+id/progressBar"
+                style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+                android:layout_width="match_parent" android:layout_height="4dp"
+                android:layout_marginBottom="14dp" android:max="100" android:progress="0"
+                android:progressBackgroundTint="@color/border" android:progressTint="@color/accent"/>
 
-            <TextView
-                android:id="@+id/confidenceText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Confidence: HIGH"
-                android:textSize="16sp"
-                android:textColor="#666666"
-                android:layout_marginTop="12dp"/>
+            <!-- Select File / Paste URL -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="48dp"
+                android:layout_marginBottom="10dp" android:orientation="horizontal">
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSelectFile" style="@style/OutlineBtn"
+                    android:layout_width="0dp" android:layout_height="match_parent"
+                    android:layout_marginEnd="6dp" android:layout_weight="1"
+                    android:text="Select File" android:textColor="@color/accent"/>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPasteUrl" style="@style/OutlineBtn"
+                    android:layout_width="0dp" android:layout_height="match_parent"
+                    android:layout_marginStart="6dp" android:layout_weight="1"
+                    android:text="Paste URL" android:textColor="@color/accent2"/>
+            </LinearLayout>
 
-            <TextView
-                android:id="@+id/probabilityText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Fake: 0% | Real: 0%"
-                android:textSize="14sp"
-                android:textColor="#999999"
-                android:layout_marginTop="8dp"/>
+            <!-- File info card -->
+            <androidx.cardview.widget.CardView android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginBottom="10dp"
+                app:cardBackgroundColor="@color/card" app:cardCornerRadius="12dp" app:cardElevation="0dp">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:gravity="center_vertical" android:orientation="horizontal" android:padding="14dp">
+                    <TextView android:id="@+id/tvFileTag" android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" android:layout_marginEnd="10dp"
+                        android:text="[--]" android:textColor="@color/text_muted"
+                        android:textSize="12sp" android:textStyle="bold"/>
+                    <TextView android:id="@+id/tvFileName" android:layout_width="0dp"
+                        android:layout_height="wrap_content" android:layout_weight="1"
+                        android:ellipsize="middle" android:singleLine="true"
+                        android:text="No video selected" android:textColor="@color/text_secondary"
+                        android:textSize="13sp"/>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Model picker row -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="36dp"
+                android:layout_marginBottom="10dp" android:gravity="center_vertical"
+                android:orientation="horizontal">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp" android:text="Model:"
+                    android:textColor="@color/text_muted" android:textSize="12sp"/>
+                <TextView android:id="@+id/tvModelName" android:layout_width="0dp"
+                    android:layout_height="wrap_content" android:layout_weight="1"
+                    android:text="alpha.pkl" android:textColor="@color/accent"
+                    android:textSize="12sp" android:textStyle="bold"/>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnModelPicker" style="@style/SmallOutlineBtn"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Change" android:textColor="@color/text_secondary"/>
+            </LinearLayout>
+
+            <!-- Analyze button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAnalyze" style="@style/PrimaryBtn"
+                android:layout_width="match_parent" android:layout_height="52dp"
+                android:layout_marginBottom="16dp" android:text="RUN ANALYSIS"/>
+
+            <!-- RESULT CARD -->
+            <androidx.cardview.widget.CardView android:id="@+id/resultCard"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp" android:visibility="gone"
+                app:cardBackgroundColor="@color/card" app:cardCornerRadius="14dp" app:cardElevation="0dp">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <!-- Verdict banner -->
+                    <LinearLayout android:id="@+id/resultBanner"
+                        android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:background="@color/danger_dim" android:orientation="vertical"
+                        android:paddingHorizontal="20dp" android:paddingVertical="18dp">
+                        <TextView android:id="@+id/tvVerdictIcon" android:layout_width="match_parent"
+                            android:layout_height="wrap_content" android:layout_marginBottom="4dp"
+                            android:gravity="center" android:text="!!"
+                            android:textColor="@color/danger" android:textSize="30sp" android:textStyle="bold"/>
+                        <TextView android:id="@+id/tvVerdictText" android:layout_width="match_parent"
+                            android:layout_height="wrap_content" android:layout_marginBottom="6dp"
+                            android:gravity="center" android:text="DEEPFAKE DETECTED"
+                            android:textColor="@color/danger" android:textSize="16sp" android:textStyle="bold"/>
+                        <TextView android:id="@+id/tvConfidence" android:layout_width="match_parent"
+                            android:layout_height="wrap_content" android:gravity="center"
+                            android:text="Confidence: HIGH" android:textColor="@color/text_secondary"
+                            android:textSize="12sp"/>
+                    </LinearLayout>
+
+                    <!-- Card body -->
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:orientation="vertical" android:padding="20dp">
+
+                        <!-- Section: Probability -->
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:layout_marginBottom="10dp" android:text="PROBABILITY BREAKDOWN"
+                            android:textColor="@color/text_muted" android:textSize="10sp" android:textStyle="bold"/>
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:layout_marginBottom="8dp" android:gravity="center_vertical"
+                            android:orientation="horizontal">
+                            <TextView android:layout_width="52dp" android:layout_height="wrap_content"
+                                android:text="Fake" android:textColor="@color/text_secondary" android:textSize="12sp"/>
+                            <ProgressBar android:id="@+id/progressFake"
+                                style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+                                android:layout_width="0dp" android:layout_height="8dp"
+                                android:layout_marginHorizontal="8dp" android:layout_weight="1"
+                                android:max="100" android:progressBackgroundTint="@color/border"/>
+                            <TextView android:id="@+id/tvProbFakeVal" android:layout_width="48dp"
+                                android:layout_height="wrap_content" android:gravity="end"
+                                android:text="0.0%" android:textColor="@color/danger"
+                                android:textSize="12sp" android:textStyle="bold"/>
+                        </LinearLayout>
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:layout_marginBottom="18dp" android:gravity="center_vertical"
+                            android:orientation="horizontal">
+                            <TextView android:layout_width="52dp" android:layout_height="wrap_content"
+                                android:text="Real" android:textColor="@color/text_secondary" android:textSize="12sp"/>
+                            <ProgressBar android:id="@+id/progressReal"
+                                style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+                                android:layout_width="0dp" android:layout_height="8dp"
+                                android:layout_marginHorizontal="8dp" android:layout_weight="1"
+                                android:max="100" android:progressBackgroundTint="@color/border"/>
+                            <TextView android:id="@+id/tvProbRealVal" android:layout_width="48dp"
+                                android:layout_height="wrap_content" android:gravity="end"
+                                android:text="0.0%" android:textColor="@color/success"
+                                android:textSize="12sp" android:textStyle="bold"/>
+                        </LinearLayout>
+
+                        <View android:layout_width="match_parent" android:layout_height="1dp"
+                            android:layout_marginBottom="16dp" android:background="@color/border"/>
+
+                        <!-- Section: Scores -->
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:layout_marginBottom="8dp" android:text="ANALYSIS SCORES"
+                            android:textColor="@color/text_muted" android:textSize="10sp" android:textStyle="bold"/>
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="32dp"
+                            android:gravity="center_vertical" android:orientation="horizontal">
+                            <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                                android:layout_weight="1" android:text="Artifact Score"
+                                android:textColor="@color/text_secondary" android:textSize="13sp"/>
+                            <TextView android:id="@+id/tvArtifactVal" android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" android:text="0.000"
+                                android:textColor="@color/warning" android:textSize="13sp" android:textStyle="bold"/>
+                        </LinearLayout>
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="32dp"
+                            android:layout_marginBottom="16dp" android:gravity="center_vertical"
+                            android:orientation="horizontal">
+                            <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                                android:layout_weight="1" android:text="Reality Score"
+                                android:textColor="@color/text_secondary" android:textSize="13sp"/>
+                            <TextView android:id="@+id/tvRealityVal" android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" android:text="0.000"
+                                android:textColor="@color/accent2" android:textSize="13sp" android:textStyle="bold"/>
+                        </LinearLayout>
+
+                        <View android:layout_width="match_parent" android:layout_height="1dp"
+                            android:layout_marginBottom="16dp" android:background="@color/border"/>
+
+                        <!-- Section: Findings -->
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:layout_marginBottom="8dp" android:text="KEY FINDINGS"
+                            android:textColor="@color/text_muted" android:textSize="10sp" android:textStyle="bold"/>
+
+                        <LinearLayout android:id="@+id/layoutFindings"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:orientation="vertical"/>
+
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Clear button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnClear" style="@style/OutlineBtn"
+                android:layout_width="match_parent" android:layout_height="44dp"
+                android:layout_marginBottom="24dp" android:text="Clear Result"
+                android:textColor="@color/text_secondary" android:visibility="gone"/>
 
         </LinearLayout>
-    </androidx.cardview.widget.CardView>
+    </androidx.core.widget.NestedScrollView>
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Powered by AI Research Lab"
-        android:textSize="12sp"
-        android:textColor="#AAAAAA"
-        android:layout_marginTop="48dp"/>
-
-</LinearLayout>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
