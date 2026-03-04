@@ -22,8 +22,8 @@ if errorlevel 1 (
 )
 
 REM Check client file
-if not exist "client_modern.py" (
-    echo [ERROR] client_modern.py not found!
+if not exist "client.py" (
+    echo [ERROR] client.py not found!
     pause
     exit /b 1
 )
@@ -36,7 +36,7 @@ pyinstaller --onefile ^
     --windowed ^
     --name="DeepfakeDetector" ^
     --icon=icon.ico ^
-    client_modern.py
+    client.py
 
 if errorlevel 1 (
     echo.
@@ -53,7 +53,7 @@ echo.
 echo Output: dist\DeepfakeDetector.exe
 echo Size: ~5-10MB
 echo.
-echo IMPORTANT: Before distributing, update RENDER_API_URL in client_modern.py
+echo IMPORTANT: Before distributing, update RENDER_API_URL in client.py
 echo            Line 24: RENDER_API_URL = "https://your-app.onrender.com"
 echo.
 echo Then rebuild: build_modern.bat

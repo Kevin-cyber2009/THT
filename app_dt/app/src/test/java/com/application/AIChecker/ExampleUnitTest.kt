@@ -1,4 +1,4 @@
-package com.example.myapplication
+package com.application.AIChecker
 
 import org.junit.Test
 

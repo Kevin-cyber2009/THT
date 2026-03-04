@@ -3,7 +3,7 @@ pluginManagement {
         gradlePluginPortal()
         google()
         mavenCentral()
-        maven("https://chaquo.com/maven")  // ← thêm dòng này
+        maven { url = uri("https://chaquo.com/maven") }
     }
 }
 
@@ -12,8 +12,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://chaquo.com/maven") }
     }
 }
 
-rootProject.name = "Deepfake Detector"
+rootProject.name = "AIChecker"
 include(":app")
