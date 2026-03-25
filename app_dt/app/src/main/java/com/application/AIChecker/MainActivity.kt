@@ -38,13 +38,11 @@ class MainActivity : AppCompatActivity() {
     private var ortEnv     : OrtEnvironment? = null
     private var ortSession : OrtSession?     = null
 
-    // ── Companion object duy nhất ─────────────────────────────────────────────
     companion object {
         private const val REQ_PICK_VIDEO = 1001
         private var activeModel = "x.onnx"
     }
 
-    // ── Quét tất cả .onnx trong assets/models/ ────────────────────────────────
     private fun getAvailableModels(): Array<String> {
         return try {
             assets.list("models")
@@ -57,7 +55,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Lifecycle ──────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,7 +82,6 @@ class MainActivity : AppCompatActivity() {
             data?.data?.let { handlePickedVideo(it) }
     }
 
-    // ── UI Setup ───────────────────────────────────────────────────────────────
 
     private fun setupUI() {
         setControlsEnabled(false)
@@ -118,8 +114,6 @@ class MainActivity : AppCompatActivity() {
         binding.tvStatus.text         = "Ready - select a file or paste a URL."
     }
 
-    // ── Load Model ─────────────────────────────────────────────────────────────
-
     private fun loadModels(modelName: String) {
         isModelLoaded = false
         setControlsEnabled(false)
@@ -130,10 +124,8 @@ class MainActivity : AppCompatActivity() {
             try {
                 val configFile = copyAsset("config.yaml")
 
-                // Scaler pkl: abc.onnx → abc_scaler.pkl
                 val scalerName = modelName.removeSuffix(".onnx") + "_scaler.pkl"
 
-                // Kiem tra scaler ton tai
                 val scalerExists = try {
                     assets.open("models/$scalerName").close()
                     true
@@ -151,7 +143,6 @@ class MainActivity : AppCompatActivity() {
 
                 val scalerFile = copyAsset("models/$scalerName")
 
-                // Python: load config + scaler + extractor
                 val result = Python.getInstance()
                     .getModule("detector")
                     .callAttr("load_models",
@@ -167,7 +158,6 @@ class MainActivity : AppCompatActivity() {
                     return@execute
                 }
 
-                // Kotlin: load ONNX session
                 val onnxFile = copyAsset("models/$modelName")
                 val env      = ortEnv ?: OrtEnvironment.getEnvironment().also { ortEnv = it }
                 ortSession?.close()
@@ -190,8 +180,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Model Picker — quét động từ assets ────────────────────────────────────
-
     private fun showModelPicker() {
         val available = getAvailableModels()
 
@@ -200,7 +188,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Đánh dấu model đang dùng
         val displayNames = available.map { name ->
             if (name == activeModel) "✓ $name (đang dùng)" else name
         }.toTypedArray()
@@ -218,8 +205,6 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Huỷ", null)
             .show()
     }
-
-    // ── Pick Video File ────────────────────────────────────────────────────────
 
     private fun pickVideoFile() {
         val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
@@ -258,8 +243,6 @@ class MainActivity : AppCompatActivity() {
         setBadge("* LOADED", R.color.accent)
         binding.tvStatus.text = "File ready. Tap RUN ANALYSIS."
     }
-
-    // ── URL Dialog ─────────────────────────────────────────────────────────────
 
     private fun showUrlDialog() {
         val view     = layoutInflater.inflate(R.layout.dialog_url, null)
@@ -331,7 +314,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Analyze ────────────────────────────────────────────────────────────────
 
     private fun analyzeVideo(videoPath: String) {
         setControlsEnabled(false)
@@ -428,8 +410,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Show Result ────────────────────────────────────────────────────────────
-
     private fun showResult(json: JSONObject) {
         val prediction = json.getString("prediction")
         val probFake   = json.getDouble("probability_fake")
@@ -498,7 +478,7 @@ class MainActivity : AppCompatActivity() {
         setBadge("!! ERROR", R.color.danger)
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
+
 
     private fun copyAsset(assetPath: String): File {
         val outFile = File(filesDir, assetPath)
