@@ -1,0 +1,16 @@
+*.exe
+*.dll
+*.pyd
+*.onnx
+*.pkl
+*.mp4
+
+_internal/
+build/
+dist/
+output/
+pro/
+
+__pycache__/
+*.pyc
+.vscode/

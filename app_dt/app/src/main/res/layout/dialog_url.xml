@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="@color/surface">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
+        android:text="Enter or paste video URL:"
+        android:textColor="@color/text_primary"
+        android:textSize="13sp"/>
+
+    <EditText
+        android:id="@+id/etUrl"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_input"
+        android:hint="https://youtube.com/watch?v=..."
+        android:inputType="textUri"
+        android:paddingHorizontal="12dp"
+        android:singleLine="true"
+        android:textColor="@color/text_primary"
+        android:textSize="13sp"/>
+
+    <TextView
+        android:id="@+id/tvUrlStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:minHeight="20dp"
+        android:text=""
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp"/>
+
+</LinearLayout>
