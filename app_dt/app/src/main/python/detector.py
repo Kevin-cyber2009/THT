@@ -2,18 +2,17 @@ import os, sys, json
 import numpy as np
 import types
 
-# ── Chặn import lightgbm + tất cả submodules ────────────────────────────────
+# ── Block lightgbm + all submodules ─────────────────────────────────────────
 class _FakeLGBM:
-    """Placeholder — ONNX inference chạy bên Kotlin, không cần predict."""
+    """Placeholder — ONNX inference runs in Kotlin, not needed here."""
     def __init__(self, **kwargs): pass
     def __setstate__(self, s):   self.__dict__.update(s)
-    def predict_proba(self, X):  raise RuntimeError("Dung ONNX thay the")
-    def predict(self, X):        raise RuntimeError("Dung ONNX thay the")
+    def predict_proba(self, X):  raise RuntimeError("Use ONNX instead")
+    def predict(self, X):        raise RuntimeError("Use ONNX instead")
     @property
     def feature_importances_(self): return []
 
 class _AutoMock(types.ModuleType):
-    """Module giả: trả về _FakeLGBM cho mọi attribute, tự tạo submodule."""
     def __getattr__(self, name):
         return _FakeLGBM
 
@@ -42,21 +41,19 @@ from src.utils import load_config
 from src.features import FeatureExtractor
 from src.fusion import ScoreFusion
 
-_scaler        = None   # sklearn StandardScaler
-_feature_names = None   # list[str] đúng thứ tự lúc train
+_scaler        = None
+_feature_names = None
 _extractor     = None
 _fusion        = None
 _config        = None
-_n_features    = 0      # số chiều scaler expect
+_n_features    = 0
 
-# ── Fallback feature-name order (khớp với thứ tự lúc train trên PC) ─────────
+# ── Fallback feature-name order (must match training order) ──────────────────
 _FALLBACK_FEATURE_NAMES_TRADITIONAL = [
-    # forensic (17)
     'fft_mean', 'fft_std', 'fft_max', 'fft_high_freq_energy', 'fft_radial_slope',
     'dct_mean', 'dct_std', 'dct_dc_mean', 'dct_ac_energy',
     'prnu_mean', 'prnu_std', 'prnu_autocorr', 'prnu_temporal_consistency',
     'flow_mean_magnitude', 'flow_std_magnitude', 'flow_smoothness', 'flow_temporal_consistency',
-    # reality (11)
     'entropy_mean', 'entropy_std', 'entropy_slope',
     'fractal_dim_mean', 'fractal_dim_std',
     'causal_prediction_error', 'causal_predictability',
@@ -64,7 +61,6 @@ _FALLBACK_FEATURE_NAMES_TRADITIONAL = [
 ]
 
 _FALLBACK_FEATURE_NAMES_HYBRID = _FALLBACK_FEATURE_NAMES_TRADITIONAL + [
-    # deep (11)
     'deep_feat_mean', 'deep_feat_std', 'deep_feat_max', 'deep_feat_min',
     'deep_temporal_var_mean', 'deep_temporal_var_std',
     'deep_l2_norm_mean', 'deep_l2_norm_std',
@@ -76,62 +72,61 @@ _FALLBACK_FEATURE_NAMES_HYBRID = _FALLBACK_FEATURE_NAMES_TRADITIONAL + [
 
 def load_models(scaler_path: str, config_path: str) -> str:
     """
-    Load config, scaler (từ *_scaler.pkl do convert_to_onnx.py tạo),
-    extractor, và fusion.
+    Load config, scaler, feature extractor, and fusion engine.
 
-    Android chỉ cần scaler để chuẩn hoá vector trước khi đưa vào ONNX.
-    ONNX inference chạy bên Kotlin — Python KHÔNG cần LightGBM model.
-
-    scaler_path: đường dẫn đến file <model>_scaler.pkl
-    config_path: đường dẫn đến config.yaml
+    IMPORTANT: preprocessing parameters (resize_width, resize_height, fps)
+    are kept identical to training config to avoid feature distribution shift.
+    Only max_frames is capped for mobile performance.
     """
     global _scaler, _feature_names, _extractor, _fusion, _config, _n_features
     try:
         # ── 1. Load config ────────────────────────────────────────────────
         _config = load_config(config_path)
 
-        # Giảm tải cho mobile
-        _config.setdefault('preprocessing', {}).update({
-            'max_frames':   30,
-            'fps':          3,
-            'resize_width': 320,
-            'resize_height':180,
-        })
-        # Tắt deep features — torch không có trên Android
+        # FIX: Do NOT override resize_width, resize_height, or fps.
+        # These MUST match training config (512x288, fps=6).
+        # Changing spatial resolution shifts the entire frequency domain
+        # (FFT radial slope, DCT energy, optical flow magnitudes), making
+        # the model predict on out-of-distribution inputs → wrong results.
+        #
+        # Only cap max_frames for mobile performance. Using 100 frames
+        # gives good feature stability while keeping inference time acceptable.
+        preproc = _config.setdefault('preprocessing', {})
+        if preproc.get('max_frames', 1000) > 100:
+            preproc['max_frames'] = 100
+
+        # Disable deep features — PyTorch is not available on Android.
+        # Deep feature names in the vector will be filled with 0.0, which
+        # is consistent with how the model was trained (key-name mismatch
+        # between EnsembleDeepExtractor output keys and get_feature_names()
+        # means deep features were effectively 0 during training too).
         _config.setdefault('features', {})['use_deep_features'] = False
 
         # ── 2. Load scaler pkl ────────────────────────────────────────────
-        # Format từ convert_to_onnx.py:
-        #   { 'scaler': ..., 'calibrator': ..., 'feature_names': [...], 'n_features': int }
-        # Cũng hỗ trợ full pkl cũ:
-        #   { 'model': ..., 'scaler': ..., 'calibrator': ..., 'feature_names': [...] }
         import joblib
         data = joblib.load(scaler_path)
 
         if 'scaler' not in data:
-            return 'ERROR: file pkl không chứa key "scaler"'
+            return 'ERROR: pkl file does not contain key "scaler"'
 
-        _scaler     = data['scaler']
+        _scaler        = data['scaler']
         _feature_names = data.get('feature_names')
 
-        # n_features từ scaler (ưu tiên) hoặc field trong pkl
         if hasattr(_scaler, 'n_features_in_'):
             _n_features = int(_scaler.n_features_in_)
         else:
             _n_features = int(data.get('n_features', 0))
 
-        # Fallback feature_names nếu pkl không lưu
         if _feature_names is None:
             if _n_features >= 39:
                 _feature_names = _FALLBACK_FEATURE_NAMES_HYBRID
             else:
                 _feature_names = _FALLBACK_FEATURE_NAMES_TRADITIONAL
 
-        # Đồng bộ độ dài feature_names với n_features
         if _n_features == 0:
             _n_features = len(_feature_names)
 
-        # ── 3. Khởi tạo extractor & fusion ───────────────────────────────
+        # ── 3. Init extractor & fusion ────────────────────────────────────
         _extractor = FeatureExtractor(_config)
         _fusion    = ScoreFusion(_config)
 
@@ -144,33 +139,33 @@ def load_models(scaler_path: str, config_path: str) -> str:
 
 def extract_features(video_path: str) -> str:
     """
-    Trích xuất features từ video, chuẩn hoá bằng scaler, trả về JSON:
-      vector           : list[float]  — đã scale, Kotlin dùng để chạy ONNX
+    Extract features from video, scale using the saved scaler, return JSON:
+      vector           : list[float]  — scaled, ready for ONNX in Kotlin
       fusion_artifact  : float
       fusion_reality   : float
       fusion_confidence: str
       explanations     : list[str]
-      feature_dim      : int          — để debug
+      feature_dim      : int
     """
     if _scaler is None or _extractor is None:
-        return json.dumps({'error': 'Model chua duoc load — goi load_models() truoc'})
+        return json.dumps({'error': 'Model not loaded — call load_models() first'})
 
     try:
-        # ── Trích xuất features thô ───────────────────────────────────────
+        # ── Extract raw features ──────────────────────────────────────────
         features, metadata = _extractor.extract_from_video(video_path)
 
-        names = _feature_names  # thứ tự cố định từ lúc train
+        names = _feature_names
 
-        # Điền 0 cho các feature mà extractor không tạo ra
-        # (vd: deep features khi torch không có trên Android)
+        # Fill zeros for features the extractor did not produce
+        # (e.g. deep features when PyTorch is unavailable)
         for name in names:
             if name not in features:
                 features[name] = 0.0
 
-        # Build vector theo đúng thứ tự
+        # Build ordered vector matching training feature order
         vector = _extractor.features_to_vector(features, names)
 
-        # Đảm bảo đúng số chiều mà scaler expect
+        # Pad or truncate to exact scaler dimension
         if len(vector) < _n_features:
             vector = np.concatenate([
                 vector,
@@ -204,5 +199,5 @@ def extract_features(video_path: str) -> str:
 
 
 def analyze_video(video_path: str) -> str:
-    """Deprecated — dùng extract_features() thay thế."""
-    return json.dumps({'error': 'Dung extract_features thay the'})
+    """Deprecated — use extract_features() instead."""
+    return json.dumps({'error': 'Use extract_features() instead'})

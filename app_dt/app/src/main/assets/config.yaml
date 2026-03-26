@@ -39,12 +39,11 @@ stress_lab:
   stability_threshold_low: 0.7
   stability_threshold_high: 0.9
 
-
 deep_learning:
-  enabled: true
-  model_type: 'resnet50'
-  use_gpu: true
-  sample_frames: 10
+  enabled: true              
+  model_type: 'resnet50'     
+  use_gpu: true              
+  sample_frames: 10         
   
   use_ensemble: true
   ensemble_models:
@@ -52,9 +51,9 @@ deep_learning:
     - 'efficientnet_b0'
 
 features:
-  expected_dimension: 46
+  expected_dimension: 46    
   normalization: 'standard'
-  use_deep_features: true
+  use_deep_features: true   
 
 classifier:
   model_type: 'lightgbm'
@@ -73,10 +72,11 @@ classifier:
   calibration_cv: 5
 
 fusion:
+
   artifact_weight: 0.30
   reality_weight: 0.30
   stress_weight: 0.20
-  deep_weight: 0.20
+  deep_weight: 0.20         
   
   threshold_fake: 0.5
   confidence_threshold_high: 0.7
