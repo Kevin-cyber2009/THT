@@ -56,11 +56,12 @@ android {
             pip {
                 install("numpy")
                 install("scikit-learn")
+                install("scipy")                   
                 install("opencv-python-headless")
                 install("yt-dlp")
                 install("pillow")
                 install("PyYAML")
-
+                install("joblib")
             }
         }
     }

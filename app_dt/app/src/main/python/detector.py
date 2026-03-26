@@ -39,18 +39,17 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
 
 from src.utils import load_config
-from src.classifier import VideoClassifier
 from src.features import FeatureExtractor
 from src.fusion import ScoreFusion
 
-_classifier = None
-_extractor  = None
-_fusion     = None
-_config     = None
+_scaler        = None   # sklearn StandardScaler
+_feature_names = None   # list[str] đúng thứ tự lúc train
+_extractor     = None
+_fusion        = None
+_config        = None
+_n_features    = 0      # số chiều scaler expect
 
-# ─── FIX: Thứ tự feature names khớp với lúc training trên PC ───────────────
-# PC dùng get_feature_names() trả về đúng thứ tự này (không sort alphabetically)
-# Android PHẢI dùng cùng thứ tự, lấy từ classifier.feature_names trong pkl
+# ── Fallback feature-name order (khớp với thứ tự lúc train trên PC) ─────────
 _FALLBACK_FEATURE_NAMES_TRADITIONAL = [
     # forensic (17)
     'fft_mean', 'fft_std', 'fft_max', 'fft_high_freq_energy', 'fft_radial_slope',
@@ -65,7 +64,7 @@ _FALLBACK_FEATURE_NAMES_TRADITIONAL = [
 ]
 
 _FALLBACK_FEATURE_NAMES_HYBRID = _FALLBACK_FEATURE_NAMES_TRADITIONAL + [
-    # deep (11) — chỉ dùng khi model được train với deep features
+    # deep (11)
     'deep_feat_mean', 'deep_feat_std', 'deep_feat_max', 'deep_feat_min',
     'deep_temporal_var_mean', 'deep_temporal_var_std',
     'deep_l2_norm_mean', 'deep_l2_norm_std',
@@ -75,115 +74,135 @@ _FALLBACK_FEATURE_NAMES_HYBRID = _FALLBACK_FEATURE_NAMES_TRADITIONAL + [
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def load_models(model_path: str, config_path: str) -> str:
+def load_models(scaler_path: str, config_path: str) -> str:
     """
-    Load config, classifier (chỉ lấy scaler + feature_names), extractor, fusion.
-    ONNX inference chạy bên Kotlin.
+    Load config, scaler (từ *_scaler.pkl do convert_to_onnx.py tạo),
+    extractor, và fusion.
+
+    Android chỉ cần scaler để chuẩn hoá vector trước khi đưa vào ONNX.
+    ONNX inference chạy bên Kotlin — Python KHÔNG cần LightGBM model.
+
+    scaler_path: đường dẫn đến file <model>_scaler.pkl
+    config_path: đường dẫn đến config.yaml
     """
-    global _classifier, _extractor, _fusion, _config
+    global _scaler, _feature_names, _extractor, _fusion, _config, _n_features
     try:
+        # ── 1. Load config ────────────────────────────────────────────────
         _config = load_config(config_path)
 
-        # Giảm max_frames để nhanh hơn trên mobile
+        # Giảm tải cho mobile
         _config.setdefault('preprocessing', {}).update({
-            'max_frames': 30,
-            'fps': 3,
+            'max_frames':   30,
+            'fps':          3,
             'resize_width': 320,
-            'resize_height': 180,
+            'resize_height':180,
         })
-
-        # FIX: Tắt deep features trên Android (không có torch)
-        # Model vẫn predict đúng vì ONNX nhận vector đã scale,
-        # nhưng ta phải đảm bảo feature_names khớp với pkl
+        # Tắt deep features — torch không có trên Android
         _config.setdefault('features', {})['use_deep_features'] = False
 
-        # Load classifier CHỈ để lấy scaler + feature_names từ pkl
-        _classifier = VideoClassifier(_config)
-        _classifier.load(model_path)
+        # ── 2. Load scaler pkl ────────────────────────────────────────────
+        # Format từ convert_to_onnx.py:
+        #   { 'scaler': ..., 'calibrator': ..., 'feature_names': [...], 'n_features': int }
+        # Cũng hỗ trợ full pkl cũ:
+        #   { 'model': ..., 'scaler': ..., 'calibrator': ..., 'feature_names': [...] }
+        import joblib
+        data = joblib.load(scaler_path)
 
+        if 'scaler' not in data:
+            return 'ERROR: file pkl không chứa key "scaler"'
+
+        _scaler     = data['scaler']
+        _feature_names = data.get('feature_names')
+
+        # n_features từ scaler (ưu tiên) hoặc field trong pkl
+        if hasattr(_scaler, 'n_features_in_'):
+            _n_features = int(_scaler.n_features_in_)
+        else:
+            _n_features = int(data.get('n_features', 0))
+
+        # Fallback feature_names nếu pkl không lưu
+        if _feature_names is None:
+            if _n_features >= 39:
+                _feature_names = _FALLBACK_FEATURE_NAMES_HYBRID
+            else:
+                _feature_names = _FALLBACK_FEATURE_NAMES_TRADITIONAL
+
+        # Đồng bộ độ dài feature_names với n_features
+        if _n_features == 0:
+            _n_features = len(_feature_names)
+
+        # ── 3. Khởi tạo extractor & fusion ───────────────────────────────
         _extractor = FeatureExtractor(_config)
         _fusion    = ScoreFusion(_config)
 
-        # Kiểm tra feature_names có trong pkl không
-        if _classifier.feature_names is None:
-            # Fallback: dùng thứ tự chuẩn — phải khớp với lúc train
-            # Nếu model train với 39 features (hybrid), dùng hybrid list
-            # Nếu train với 28 features (traditional), dùng traditional list
-            n_features = _classifier.scaler.n_features_in_ if hasattr(_classifier.scaler, 'n_features_in_') else 0
-            if n_features == 39 or n_features == 46:
-                _classifier.feature_names = _FALLBACK_FEATURE_NAMES_HYBRID
-            else:
-                _classifier.feature_names = _FALLBACK_FEATURE_NAMES_TRADITIONAL
-
         return 'OK'
+
     except Exception as e:
-        return f'ERROR: {e}'
+        import traceback
+        return f'ERROR: {e}\n{traceback.format_exc()}'
 
 
 def extract_features(video_path: str) -> str:
     """
-    Extract features từ video, trả về JSON chứa:
-    - vector: list[float] đã scale theo ĐÚNG THỨ TỰ feature_names từ pkl
-    - fusion_artifact: float
-    - fusion_reality: float
-    - fusion_confidence: str
-    - explanations: list[str]
-    - feature_dim: int (để debug)
+    Trích xuất features từ video, chuẩn hoá bằng scaler, trả về JSON:
+      vector           : list[float]  — đã scale, Kotlin dùng để chạy ONNX
+      fusion_artifact  : float
+      fusion_reality   : float
+      fusion_confidence: str
+      explanations     : list[str]
+      feature_dim      : int          — để debug
     """
-    if not _extractor:
-        return json.dumps({'error': 'Model chua duoc load'})
+    if _scaler is None or _extractor is None:
+        return json.dumps({'error': 'Model chua duoc load — goi load_models() truoc'})
+
     try:
-        # Extract tất cả features (traditional only vì torch không có trên Android)
+        # ── Trích xuất features thô ───────────────────────────────────────
         features, metadata = _extractor.extract_from_video(video_path)
 
-        # FIX CHÍNH: Dùng feature_names từ pkl (thứ tự lúc train)
-        # Không sort, không dùng get_feature_names() nếu khác pkl
-        names = _classifier.feature_names
+        names = _feature_names  # thứ tự cố định từ lúc train
 
-        # Kiểm tra xem model có cần deep features không
-        # Nếu có thì fill 0 cho những deep features bị thiếu
-        n_expected = _classifier.scaler.n_features_in_ if hasattr(_classifier.scaler, 'n_features_in_') else len(names)
+        # Điền 0 cho các feature mà extractor không tạo ra
+        # (vd: deep features khi torch không có trên Android)
+        for name in names:
+            if name not in features:
+                features[name] = 0.0
 
-        if len(names) > len(features) or n_expected > len(features):
-            # Model được train với nhiều features hơn ta có (vd: deep features)
-            # Fill 0 cho features bị thiếu
-            for name in names:
-                if name not in features:
-                    features[name] = 0.0
-
-        # Build vector theo đúng thứ tự feature_names từ pkl
+        # Build vector theo đúng thứ tự
         vector = _extractor.features_to_vector(features, names)
 
-        # Đảm bảo đúng số chiều
-        if len(vector) != n_expected:
-            # Cắt hoặc pad
-            if len(vector) < n_expected:
-                vector = np.concatenate([vector, np.zeros(n_expected - len(vector), dtype=np.float32)])
-            else:
-                vector = vector[:n_expected]
+        # Đảm bảo đúng số chiều mà scaler expect
+        if len(vector) < _n_features:
+            vector = np.concatenate([
+                vector,
+                np.zeros(_n_features - len(vector), dtype=np.float32)
+            ])
+        elif len(vector) > _n_features:
+            vector = vector[:_n_features]
 
-        # Scale bằng scaler đã train (sklearn StandardScaler)
-        scaled = _classifier.scaler.transform(vector.reshape(1, -1))
+        # ── Scale ─────────────────────────────────────────────────────────
+        scaled      = _scaler.transform(vector.reshape(1, -1))
         vector_list = scaled.flatten().tolist()
 
-        # Tính fusion scores
-        artifact   = _fusion.compute_artifact_score(features)
-        reality    = _fusion.compute_reality_score(features)
-        fusion     = _fusion.fuse_scores(artifact, reality, 0.5)
-        explain    = _fusion.generate_explanation(features, fusion)
+        # ── Fusion scores & explanations ──────────────────────────────────
+        artifact  = _fusion.compute_artifact_score(features)
+        reality   = _fusion.compute_reality_score(features)
+        fusion    = _fusion.fuse_scores(artifact, reality, 0.5)
+        explain   = _fusion.generate_explanation(features, fusion)
 
         return json.dumps({
-            'vector':             vector_list,       # Kotlin dùng để chạy ONNX
+            'vector':             vector_list,
             'fusion_artifact':    float(artifact),
             'fusion_reality':     float(reality),
             'fusion_confidence':  fusion['confidence'],
             'explanations':       explain[:5],
-            'feature_dim':        len(vector_list),  # debug
+            'feature_dim':        len(vector_list),
         })
+
     except Exception as e:
         import traceback
         return json.dumps({'error': str(e), 'traceback': traceback.format_exc()})
 
 
 def analyze_video(video_path: str) -> str:
+    """Deprecated — dùng extract_features() thay thế."""
     return json.dumps({'error': 'Dung extract_features thay the'})
