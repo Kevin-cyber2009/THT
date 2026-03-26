@@ -28,11 +28,9 @@ from src.utils import load_config, setup_logging
 
 
 class AnalysisThread(QThread):
-    """Thread xử lý analysis để không block GUI"""
-    
-    finished = Signal(dict)  # Signal khi hoàn thành
-    progress = Signal(str)   # Signal cập nhật progress
-    error = Signal(str)      # Signal khi có lỗi
+    finished = Signal(dict)  
+    progress = Signal(str)   
+    error = Signal(str)    
     
     def __init__(self, video_path, model_path, config_path):
         super().__init__()
@@ -41,63 +39,51 @@ class AnalysisThread(QThread):
         self.config_path = config_path
     
     def run(self):
-        """Chạy analysis"""
         try:
             self.progress.emit("Đang khởi tạo...")
             
-            # Load config
             config = load_config(self.config_path)
             
-            # Load model
             self.progress.emit("Đang load model...")
             classifier = VideoClassifier(config)
             classifier.load(self.model_path)
             
-            # Initialize extractors
             self.progress.emit("Đang khởi tạo feature extractor...")
             feature_extractor = FeatureExtractor(config)
             fusion_engine = ScoreFusion(config)
             
-            # Extract features
             self.progress.emit("Đang trích xuất features từ video...")
             features_dict, metadata = feature_extractor.extract_from_video(self.video_path)
             
-            # Get feature names
             feature_names = classifier.feature_names
             if feature_names is None:
                 feature_names = feature_extractor.get_feature_names()
             
-            # Convert to vector
             self.progress.emit("Đang xử lý features...")
             feature_vector = feature_extractor.features_to_vector(
                 features_dict,
                 feature_names
             )
             
-            # Predict
             self.progress.emit("Đang phân tích...")
             X = feature_vector.reshape(1, -1)
             pred, prob = classifier.predict(X)
             
-            # Calculate component scores
             self.progress.emit("Đang tính toán scores...")
             artifact_score = fusion_engine.compute_artifact_score(features_dict)
             reality_score = fusion_engine.compute_reality_score(features_dict)
             
-            # Fusion
             fusion_result = fusion_engine.fuse_scores(
                 artifact_score,
                 reality_score,
-                0.5  # Default stress score
+                0.5  
             )
             
-            # Generate explanations
             explanations = fusion_engine.generate_explanation(
                 features_dict,
                 fusion_result
             )
             
-            # Prepare result
             result = {
                 'video_path': self.video_path,
                 'prediction': 'FAKE' if pred[0] == 1 else 'REAL',
@@ -120,8 +106,6 @@ class AnalysisThread(QThread):
 
 
 class DownloadThread(QThread):
-    """Thread download video từ URL"""
-    
     finished = Signal(str)
     progress = Signal(str)
     error = Signal(str)
@@ -132,7 +116,6 @@ class DownloadThread(QThread):
         self.output_dir = output_dir
     
     def run(self):
-        """Download video"""
         try:
             import subprocess
             
@@ -174,8 +157,6 @@ class DownloadThread(QThread):
 
 
 class MainWindow(QMainWindow):
-    """Main application window"""
-    
     def __init__(self):
         super().__init__()
         
@@ -187,20 +168,15 @@ class MainWindow(QMainWindow):
         self.history_file = os.path.join(BASE_PATH, "output", "history.json")
         self.temp_dir = os.path.join(BASE_PATH, "temp")
         
-        # Set dark theme
         self.setup_theme()
         
-        # Load history
         self.history = self.load_history()
         
-        # Setup UI
         self.setup_ui()
         
-        # Check model exists
         self.check_model()
     
     def setup_theme(self):
-        """Setup dark theme"""
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #1E1E1E;
@@ -338,8 +314,6 @@ class MainWindow(QMainWindow):
         """)
     
     def setup_ui(self):
-        """Setup giao diện"""
-        
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
@@ -365,8 +339,6 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Sẵn sàng")
     
     def create_analysis_tab(self):
-        """Tạo tab phân tích"""
-        
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
@@ -437,9 +409,7 @@ class MainWindow(QMainWindow):
         
         return widget
     
-    def create_history_tab(self):
-        """Tạo tab lịch sử"""
-        
+    def create_history_tab(self):        
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
@@ -465,9 +435,7 @@ class MainWindow(QMainWindow):
         
         return widget
     
-    def create_about_tab(self):
-        """Tạo tab thông tin"""
-        
+    def create_about_tab(self):        
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(20)
@@ -527,7 +495,6 @@ class MainWindow(QMainWindow):
             self.input_field.setText(file_path)
     
     def check_model(self):
-        """Kiểm tra model có tồn tại không"""
         if not os.path.exists(self.model_path):
             QMessageBox.warning(
                 self,

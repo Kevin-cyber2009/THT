@@ -1,6 +1,3 @@
-# downloader.py
-# app/src/main/python/downloader.py
-
 import json
 import os
 import re
@@ -83,14 +80,12 @@ def _download_social(url: str) -> str:
     out = os.path.join(TEMP_DIR, "video_tmp.%(ext)s")
     is_yt = "youtube.com" in url or "youtu.be" in url
 
-    # Chuyen Shorts sang watch URL
     dl_url = url
     if "/shorts/" in url:
         vid = re.search(r'/shorts/([a-zA-Z0-9_-]+)', url)
         if vid:
             dl_url = f"https://www.youtube.com/watch?v={vid.group(1)}"
 
-    # Base options - KHONG co format de override sau
     base = {
         "outtmpl": out,
         "quiet": True,
@@ -100,16 +95,11 @@ def _download_social(url: str) -> str:
         "retries": 3,
         "fragment_retries": 3,
         "ignoreerrors": False,
-        # Quan trong: merge format thanh 1 file
         "merge_output_format": "mp4",
     }
 
-    # ===========================================================
-    # DANH SACH CLIENT - thu tu tu it bi chan den nhieu bi chan
-    # ios va android_vr la 2 client KHONG can PO token (nam 2024)
-    # ===========================================================
+
     yt_strategies = [
-        # --- iOS: it bi chan nhat, khong can PO token ---
         {
             "name": "ios",
             "format": "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio/best",
@@ -118,7 +108,6 @@ def _download_social(url: str) -> str:
                 "User-Agent": "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)",
             },
         },
-        # --- Android VR: client moi it bi chặn ---
         {
             "name": "android_vr",
             "format": "best[ext=mp4]/best",
@@ -127,7 +116,6 @@ def _download_social(url: str) -> str:
                 "User-Agent": "com.google.android.apps.youtube.vr.oculus/1.57.29 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
             },
         },
-        # --- mweb: mobile web, nhe hon desktop web ---
         {
             "name": "mweb",
             "format": "best[ext=mp4][height<=720]/best[ext=mp4]/best",
@@ -136,7 +124,6 @@ def _download_social(url: str) -> str:
                 "User-Agent": "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
             },
         },
-        # --- Android Creator Studio ---
         {
             "name": "android_creator",
             "format": "best[ext=mp4]/best",
@@ -145,7 +132,6 @@ def _download_social(url: str) -> str:
                 "User-Agent": "com.google.android.apps.youtube.creator/24.30.100 (Linux; U; Android 12; GB) gzip",
             },
         },
-        # --- Android Music (co format rieng) ---
         {
             "name": "android_music",
             "format": "best[ext=mp4]/best",
@@ -154,7 +140,6 @@ def _download_social(url: str) -> str:
                 "User-Agent": "com.google.android.apps.youtube.music/7.16.52 (Linux; U; Android 13; GB) gzip",
             },
         },
-        # --- Android + iOS ket hop ---
         {
             "name": "android_ios",
             "format": "best",
@@ -163,7 +148,6 @@ def _download_social(url: str) -> str:
                 "User-Agent": "com.google.android.youtube/19.02.39 (Linux; U; Android 12) gzip",
             },
         },
-        # --- Fallback: khong chi dinh client ---
         {
             "name": "default",
             "format": "best[height<=480]/worst",
@@ -208,11 +192,10 @@ def _download_social(url: str) -> str:
                     return json.dumps({"path": path, "name": name})
             if err:
                 errors.append(f"[{strat['name']}@{try_url[-20:]}]: {err[:60]}")
-            break  # chi thu url thu nhat, neu that bai moi thu url thu 2
+            break  
 
-    # Thu tat ca URL voi tung strategy
     for strat in strategies:
-        for try_url in urls_to_try[1:]:  # chi thu url thu 2
+        for try_url in urls_to_try[1:]: 
             _cleanup()
             opts = dict(base)
             opts["format"] = strat["format"]
