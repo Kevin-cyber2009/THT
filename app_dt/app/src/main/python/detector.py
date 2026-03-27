@@ -2,7 +2,6 @@ import os, sys, json
 import numpy as np
 import types
 
-# -- Block lightgbm + all submodules -----------------------------------------
 class _FakeLGBM:
     """Placeholder — ONNX inference runs in Kotlin, not needed here."""
     def __init__(self, **kwargs): pass
@@ -32,7 +31,6 @@ for _mod in [
     'lightgbm.callback', 'lightgbm.engine', 'lightgbm.plotting', 'lightgbm.dask',
 ]:
     sys.modules[_mod] = _make_lgb_module(_mod)
-# -----------------------------------------------------------------------------
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
@@ -49,35 +47,6 @@ _config        = None
 _n_features    = 0
 
 
-_CORRECT_FEATURE_NAMES_TRADITIONAL = [
-    'fft_mean', 'fft_std', 'fft_max', 'fft_high_freq_energy', 'fft_radial_slope',
-    'dct_mean', 'dct_std', 'dct_dc_mean', 'dct_ac_energy',
-    'prnu_mean', 'prnu_std', 'prnu_autocorr', 'prnu_temporal_consistency',
-    'flow_mean_magnitude', 'flow_std_magnitude', 'flow_smoothness', 'flow_temporal_consistency',
-    'entropy_mean', 'entropy_std', 'entropy_slope',
-    'fractal_dim_mean', 'fractal_dim_std',
-    'causal_prediction_error', 'causal_predictability',
-    'compression_mean', 'compression_std', 'compression_delta_mean', 'complexity_mean',
-]
-
-
-_CORRECT_FEATURE_NAMES_DEEP = [
-    'deep_feat_mean',
-    'deep_feat_std',
-    'deep_feat_max',
-    'deep_feat_min',
-    'deep_temporal_var_mean',
-    'deep_temporal_var_std',
-    'deep_l2_norm_mean',
-    'deep_l2_norm_std',
-    'deep_similarity_mean',
-    'deep_similarity_std',
-    'deep_sparsity',
-]
-
-_CORRECT_FEATURE_NAMES_HYBRID = _CORRECT_FEATURE_NAMES_TRADITIONAL + _CORRECT_FEATURE_NAMES_DEEP
-
-
 def load_models(scaler_path: str, config_path: str) -> str:
     global _scaler, _feature_names, _extractor, _fusion, _config, _n_features
     try:
@@ -85,18 +54,17 @@ def load_models(scaler_path: str, config_path: str) -> str:
 
         preproc = _config.setdefault('preprocessing', {})
         
-        preproc['resize_width'] = 512
-        preproc['resize_height'] = 288
-        preproc['fps'] = 6
-        
-        if preproc.get('max_frames', 1000) > 100:
-            preproc['max_frames'] = 100
 
-        # ===== FIX: BAT DEEP FEATURES =====
-        # Cu: use_deep_features = False (Sai - chi co 28 features)
-        # Moi: use_deep_features = True (Dung - du 39 features)
-        _config.setdefault('features', {})['use_deep_features'] = True
-        # ===================================
+        preproc['resize_width'] = preproc.get('resize_width', 512)
+        preproc['resize_height'] = preproc.get('resize_height', 288)
+        preproc['fps'] = preproc.get('fps', 6)
+        
+
+        preproc['max_frames'] = preproc.get('max_frames', 1000)
+
+
+        features_config = _config.setdefault('features', {})
+        features_config['use_deep_features'] = features_config.get('use_deep_features', True)
 
         import joblib
         data = joblib.load(scaler_path)
@@ -112,17 +80,21 @@ def load_models(scaler_path: str, config_path: str) -> str:
         else:
             _n_features = int(data.get('n_features', 0))
 
-        if _feature_names is None:
-            if _n_features >= 39:
-                _feature_names = _CORRECT_FEATURE_NAMES_HYBRID[:_n_features]
-            else:
-                _feature_names = _CORRECT_FEATURE_NAMES_TRADITIONAL[:_n_features]
+        _extractor_temp = FeatureExtractor(_config)
+        
+        if _feature_names is None or len(_feature_names) != _n_features:
+
+            _feature_names = _extractor_temp.get_feature_names()
+            
+            if len(_feature_names) > _n_features:
+                _feature_names = _feature_names[:_n_features]
+            elif len(_feature_names) < _n_features:
+                _feature_names = _feature_names + [f'feature_{i}' for i in range(len(_feature_names), _n_features)]
         else:
-            if len(_feature_names) != _n_features:
-                if _n_features >= 39:
-                    _feature_names = _CORRECT_FEATURE_NAMES_HYBRID[:_n_features]
-                else:
-                    _feature_names = _CORRECT_FEATURE_NAMES_TRADITIONAL[:_n_features]
+            extractor_names = _extractor_temp.get_feature_names()
+            if len(extractor_names) == _n_features:
+                if extractor_names != _feature_names:
+                    print(f"WARNING: Model feature_names differ from FeatureExtractor. Using model's feature_names.")
 
         if _n_features == 0:
             _n_features = len(_feature_names)
