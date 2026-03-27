@@ -2,10 +2,17 @@ import numpy as np
 from typing import Dict, Any, Optional, List, Tuple
 import logging
 from typing import Tuple
-from .preprocessing import VideoPreprocessor
-from .forensic import ForensicAnalyzer
-from .reality_engine import RealityEngine
-from .utils import load_config, normalize_array
+
+try:
+    from .preprocessing import VideoPreprocessor
+    from .forensic import ForensicAnalyzer
+    from .reality_engine import RealityEngine
+    from .utils import load_config, normalize_array
+except ImportError:
+    from preprocessing import VideoPreprocessor
+    from forensic import ForensicAnalyzer
+    from reality_engine import RealityEngine
+    from utils import load_config, normalize_array
 
 
 logger = logging.getLogger('hybrid_detector.features')
@@ -29,8 +36,12 @@ class FeatureExtractor:
         self.use_deep = config.get('features', {}).get('use_deep_features', False)
         
         if self.use_deep:
+            # Try PyTorch first, then fallback to ONNX
+            deep_loaded = False
+            
+            # Try PyTorch-based extractor
             try:
-                logger.info("Attempting to load deep learning module...")
+                logger.info("Attempting to load PyTorch deep learning module...")
                 from .deep_features import DeepFeatureExtractor, EnsembleDeepExtractor
                 
                 use_ensemble = config.get('deep_learning', {}).get('use_ensemble', False)
@@ -42,18 +53,43 @@ class FeatureExtractor:
                     logger.info("Initializing Deep Learning extractor...")
                     self.deep_extractor = DeepFeatureExtractor(config)
                 
-                logger.info("✓ Deep learning ENABLED")
+                logger.info("✓ Deep learning ENABLED (PyTorch)")
+                deep_loaded = True
                 
             except ImportError as e:
-                logger.warning(f"Cannot import deep_features: {e}")
-                logger.warning("Deep learning features DISABLED - using traditional only")
-                self.use_deep = False
-                self.deep_extractor = None
+                logger.warning(f"PyTorch not available: {e}")
             except Exception as e:
-                logger.error(f"Error initializing deep learning: {e}")
+                logger.error(f"Error initializing PyTorch deep learning: {e}")
+            
+            # Fallback to ONNX if PyTorch failed
+            if not deep_loaded:
+                try:
+                    logger.info("Attempting to load ONNX deep learning module...")
+                    from .deep_features_onnx import DeepFeatureExtractor, EnsembleDeepExtractor
+                    
+                    use_ensemble = config.get('deep_learning', {}).get('use_ensemble', False)
+                    
+                    if use_ensemble:
+                        logger.info("Initializing Ensemble Deep Learning extractors (ONNX)...")
+                        self.deep_extractor = EnsembleDeepExtractor(config)
+                    else:
+                        logger.info("Initializing Deep Learning extractor (ONNX)...")
+                        self.deep_extractor = DeepFeatureExtractor(config)
+                    
+                    logger.info("✓ Deep learning ENABLED (ONNX)")
+                    deep_loaded = True
+                    
+                except ImportError as e:
+                    logger.warning(f"ONNX Runtime not available: {e}")
+                except Exception as e:
+                    logger.error(f"Error initializing ONNX deep learning: {e}")
+            
+            # If both failed, disable deep features
+            if not deep_loaded:
                 logger.warning("Deep learning features DISABLED - using traditional only")
                 self.use_deep = False
                 self.deep_extractor = None
+                
         else:
             logger.info("Deep learning features disabled in config")
         
@@ -105,7 +141,7 @@ class FeatureExtractor:
         frames, metadata = self.preprocessor.preprocess(video_path)
         
         if len(frames) < 10:
-            logger.warning(f"Video ngắn ({len(frames)} frames), padding...")
+            logger.warning(f"Video ngan ({len(frames)} frames), padding...")
             frames = self.preprocessor.handle_short_video(frames, min_frames=10)
         
         features = self.extract_features(frames)
@@ -188,4 +224,3 @@ class FeatureExtractor:
                 info['ensemble_models'] = [m.model_type for m in self.deep_extractor.models]
         
         return info
-

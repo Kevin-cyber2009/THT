@@ -2,6 +2,7 @@ import os, sys, json
 import numpy as np
 import types
 
+# -- Block lightgbm + all submodules -----------------------------------------
 class _FakeLGBM:
     """Placeholder — ONNX inference runs in Kotlin, not needed here."""
     def __init__(self, **kwargs): pass
@@ -31,6 +32,7 @@ for _mod in [
     'lightgbm.callback', 'lightgbm.engine', 'lightgbm.plotting', 'lightgbm.dask',
 ]:
     sys.modules[_mod] = _make_lgb_module(_mod)
+# -----------------------------------------------------------------------------
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
@@ -90,7 +92,11 @@ def load_models(scaler_path: str, config_path: str) -> str:
         if preproc.get('max_frames', 1000) > 100:
             preproc['max_frames'] = 100
 
-        _config.setdefault('features', {})['use_deep_features'] = False
+        # ===== FIX: BAT DEEP FEATURES =====
+        # Cu: use_deep_features = False (Sai - chi co 28 features)
+        # Moi: use_deep_features = True (Dung - du 39 features)
+        _config.setdefault('features', {})['use_deep_features'] = True
+        # ===================================
 
         import joblib
         data = joblib.load(scaler_path)
@@ -146,7 +152,6 @@ def extract_features(video_path: str) -> str:
 
     try:
         features, metadata = _extractor.extract_from_video(video_path)
-
 
         vector = []
         for name in _feature_names:

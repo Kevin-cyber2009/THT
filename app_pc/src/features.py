@@ -60,7 +60,7 @@ class FeatureExtractor:
         if self.use_deep:
             self.expected_dim = config.get('features', {}).get('expected_dimension', 39)
         else:
-            self.expected_dim = 28  # Traditional only (17 forensic + 11 reality)
+            self.expected_dim = 28  
         
         logger.info(f"✓ FeatureExtractor initialized")
         logger.info(f"  Mode: {'HYBRID (Traditional + Deep)' if self.use_deep else 'TRADITIONAL ONLY'}")

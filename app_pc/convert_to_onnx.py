@@ -3,8 +3,8 @@ import os
 import joblib
 import numpy as np
 
-DEFAULT_PKL_IN   = r"app_pc/models/x.pkl"  
-DEFAULT_ONNX_OUT = r"app_pc/models/x.onnx"  
+DEFAULT_PKL_IN   = r"app_pc/models/onestar.pkl"  
+DEFAULT_ONNX_OUT = r"app_pc/models/onestar.onnx"  
 
 def convert(pkl_path: str, onnx_path: str):
     print("=" * 70)
