@@ -43,12 +43,18 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_PICK_VIDEO = 1001
         private var activeModel = "x.onnx"
         private const val TAG = "AIChecker"
+
+        // Deep feature ONNX model filenames that must be copied alongside the classifier
+        private val DEEP_FEATURE_MODELS = listOf(
+            "resnet50_features.onnx",
+            "efficientnet_b0_features.onnx"
+        )
     }
 
     private fun getAvailableModels(): Array<String> {
         return try {
             assets.list("models")
-                ?.filter { it.endsWith(".onnx") }
+                ?.filter { it.endsWith(".onnx") && !it.endsWith("_features.onnx") }
                 ?.sorted()
                 ?.toTypedArray()
                 ?: arrayOf("x.onnx")
@@ -144,6 +150,17 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val scalerFile = copyAsset("models/$scalerName")
+
+                // ── CRITICAL FIX: copy deep feature ONNX models so Python can find them ──
+                for (deepModelFile in DEEP_FEATURE_MODELS) {
+                    try {
+                        assets.open("models/$deepModelFile").close()   // check exists
+                        copyAsset("models/$deepModelFile")
+                        Log.d(TAG, "Copied deep feature model: $deepModelFile")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Deep feature model not found in assets: $deepModelFile — skipping")
+                    }
+                }
 
                 // Load Python detector module
                 val result = Python.getInstance()
@@ -388,10 +405,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * FIXED: Properly extract probability from LightGBM ONNX output
-     * LightGBM ONNX returns: [labels, probabilities]
-     * - labels: LongArray of predicted class
-     * - probabilities: List<Map<Long, Float>> - list of class probability maps
+     * Parse LightGBM ONNX output.
+     * Output format: [labels (LongArray), probabilities (List<Map<Long,Float>>)]
      */
     private fun runOnnxInference(floats: FloatArray): Pair<Float, Int> {
         val session = ortSession ?: throw IllegalStateException("ONNX session chua duoc load")
@@ -407,42 +422,25 @@ class MainActivity : AppCompatActivity() {
                 val label  = labels[0].toInt()
 
                 Log.d(TAG, "ONNX raw label: $label")
-                Log.d(TAG, "ONNX output[0] type: ${output[0].value::class.java}")
-                Log.d(TAG, "ONNX output[1] type: ${output[1].value::class.java}")
 
-                // FIXED: Correctly parse LightGBM ONNX probability output
                 val probFake: Float = try {
-                    // output[1] is a List of Maps: List<Map<Long, Float>>
                     val probList = output[1].value as List<*>
-                    Log.d(TAG, "probList size: ${probList.size}")
-
                     if (probList.isNotEmpty()) {
                         val probMap = probList[0] as Map<*, *>
-                        Log.d(TAG, "probMap keys: ${probMap.keys}")
-                        Log.d(TAG, "probMap values: ${probMap.values}")
-
-                        // Get probability for class 1 (FAKE)
-                        val prob = probMap[1L] as? Float
+                        probMap[1L] as? Float
                             ?: probMap[1] as? Float
                             ?: probMap["1"] as? Float
                             ?: 0.5f
-                        prob
                     } else {
                         0.5f
                     }
                 } catch (e1: Exception) {
                     Log.w(TAG, "Failed to parse ONNX output format 1: $e1")
                     try {
-                        // Try alternative format
                         val probArray = output[1].value as? FloatArray
-                        if (probArray != null && probArray.size >= 2) {
-                            probArray[1]  // Probability of class 1
-                        } else {
-                            0.5f
-                        }
+                        if (probArray != null && probArray.size >= 2) probArray[1] else 0.5f
                     } catch (e2: Exception) {
                         Log.w(TAG, "Failed to parse ONNX output format 2: $e2")
-                        // Fallback: use label-based probability
                         if (label == 1) 0.75f else 0.25f
                     }
                 }
@@ -531,8 +529,6 @@ class MainActivity : AppCompatActivity() {
         setBadge("!! ERROR", R.color.danger)
         Log.e(TAG, "Error: $msg")
     }
-
-
 
     private fun copyAsset(assetPath: String): File {
         val outFile = File(filesDir, assetPath)
