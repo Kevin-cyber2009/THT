@@ -163,7 +163,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("AI Checker")
         self.setMinimumSize(1000, 700)
         
-        self.model_path = os.path.join(BASE_PATH, "models", "x.pkl")
+        self.model_path = os.path.join(BASE_PATH, "models", "onestar.pkl")
         self.config_path = os.path.join(BASE_PATH, "config.yaml")
         self.history_file = os.path.join(BASE_PATH, "output", "history.json")
         self.temp_dir = os.path.join(BASE_PATH, "temp")
@@ -500,7 +500,7 @@ class MainWindow(QMainWindow):
                 self,
                 "Model không tồn tại",
                 f"Không tìm thấy model tại:\n{self.model_path}\n\n"
-                f"Vui lòng đảm bảo file models/x.pkl tồn tại."
+                f"Vui lòng đảm bảo file models/onestar.pkl tồn tại."
             )
             self.btn_analyze.setEnabled(False)
         else:

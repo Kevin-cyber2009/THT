@@ -53,15 +53,10 @@ def load_models(scaler_path: str, config_path: str) -> str:
         _config = load_config(config_path)
 
         preproc = _config.setdefault('preprocessing', {})
-        
-
         preproc['resize_width'] = preproc.get('resize_width', 512)
         preproc['resize_height'] = preproc.get('resize_height', 288)
         preproc['fps'] = preproc.get('fps', 6)
-        
-
         preproc['max_frames'] = preproc.get('max_frames', 1000)
-
 
         features_config = _config.setdefault('features', {})
         features_config['use_deep_features'] = features_config.get('use_deep_features', True)
@@ -75,29 +70,35 @@ def load_models(scaler_path: str, config_path: str) -> str:
         _scaler        = data['scaler']
         _feature_names = data.get('feature_names')
         
+        # Get expected number of features from scaler
         if hasattr(_scaler, 'n_features_in_'):
             _n_features = int(_scaler.n_features_in_)
         else:
             _n_features = int(data.get('n_features', 0))
 
+        # Initialize extractor to check feature compatibility
         _extractor_temp = FeatureExtractor(_config)
+        extractor_names = _extractor_temp.get_feature_names()
         
-        if _feature_names is None or len(_feature_names) != _n_features:
-
-            _feature_names = _extractor_temp.get_feature_names()
-            
-            if len(_feature_names) > _n_features:
-                _feature_names = _feature_names[:_n_features]
-            elif len(_feature_names) < _n_features:
-                _feature_names = _feature_names + [f'feature_{i}' for i in range(len(_feature_names), _n_features)]
+        print(f"[DEBUG] Scaler expects {_n_features} features")
+        print(f"[DEBUG] Scaler feature_names: {_feature_names[:5] if _feature_names else None}...")
+        print(f"[DEBUG] Extractor provides {len(extractor_names)} features")
+        print(f"[DEBUG] Extractor feature_names: {extractor_names[:5]}...")
+        
+        # CRITICAL FIX: Always use scaler's feature_names if available and correct length
+        # This ensures the feature order matches exactly what the model was trained with
+        if _feature_names is not None and len(_feature_names) == _n_features:
+            print(f"[DEBUG] Using feature_names from scaler ({len(_feature_names)} features)")
+            # Verify that all scaler features exist in extractor
+            missing_in_extractor = [name for name in _feature_names if name not in extractor_names]
+            if missing_in_extractor:
+                print(f"[WARNING] Features in scaler but not in extractor: {missing_in_extractor}")
         else:
-            extractor_names = _extractor_temp.get_feature_names()
-            if len(extractor_names) == _n_features:
-                if extractor_names != _feature_names:
-                    print(f"WARNING: Model feature_names differ from FeatureExtractor. Using model's feature_names.")
-
-        if _n_features == 0:
-            _n_features = len(_feature_names)
+            print(f"[WARNING] Scaler feature_names invalid, using extractor names")
+            _feature_names = extractor_names
+            if len(_feature_names) != _n_features:
+                print(f"[ERROR] Feature count mismatch: extractor={len(_feature_names)}, scaler={_n_features}")
+                return f'ERROR: Feature count mismatch: extractor={len(_feature_names)}, scaler={_n_features}'
 
         _extractor = FeatureExtractor(_config)
         _fusion    = ScoreFusion(_config)
@@ -111,58 +112,92 @@ def load_models(scaler_path: str, config_path: str) -> str:
 
 def extract_features(video_path: str) -> str:
     """
-    Extract features from video, scale using the saved scaler, return JSON:
-      vector           : list[float]  — scaled, ready for ONNX in Kotlin
-      fusion_artifact  : float
-      fusion_reality   : float
-      fusion_confidence: str
-      explanations     : list[str]
-      feature_dim      : int
+    Extract features from video, scale using the saved scaler, return JSON.
     """
     if _scaler is None or _extractor is None:
         return json.dumps({'error': 'Model not loaded — call load_models() first'})
 
     try:
         features, metadata = _extractor.extract_from_video(video_path)
+        
+        print(f"[DEBUG] Extracted {len(features)} features from video")
+        print(f"[DEBUG] Feature keys: {list(features.keys())[:10]}...")
 
+        # Build feature vector in the EXACT order of _feature_names
         vector = []
+        missing_features = []
+        zero_features = []
+        
         for name in _feature_names:
-            value = features.get(name, 0.0)
+            value = features.get(name, None)
             
+            if value is None:
+                missing_features.append(name)
+                value = 0.0
+            elif value == 0.0:
+                zero_features.append(name)
+            
+            # Handle NaN/Inf
             if np.isnan(value) or np.isinf(value):
                 value = 0.0
             
-            vector.append(value)
+            vector.append(float(value))
 
-        vector = np.array(vector, dtype=np.float32)
+        if missing_features:
+            print(f"[WARNING] Missing features ({len(missing_features)}): {missing_features[:10]}")
+        
+        vector = np.array(vector, dtype=np.float64)  # Use float64 for precision
 
+        # Ensure correct vector length
         if len(vector) != _n_features:
+            print(f"[ERROR] Vector length mismatch: {len(vector)} vs {_n_features}")
             if len(vector) < _n_features:
                 vector = np.concatenate([
                     vector,
-                    np.zeros(_n_features - len(vector), dtype=np.float32)
+                    np.zeros(_n_features - len(vector), dtype=np.float64)
                 ])
             elif len(vector) > _n_features:
                 vector = vector[:_n_features]
 
-        scaled      = _scaler.transform(vector.reshape(1, -1))
+        print(f"[DEBUG] Feature vector shape: {vector.shape}")
+        print(f"[DEBUG] Feature vector stats: mean={np.mean(vector):.4f}, std={np.std(vector):.4f}")
+        print(f"[DEBUG] First 10 values: {vector[:10]}")
+
+        # Apply scaler transformation
+        try:
+            scaled = _scaler.transform(vector.reshape(1, -1))
+            print(f"[DEBUG] Scaled vector stats: mean={np.mean(scaled):.4f}, std={np.std(scaled):.4f}")
+            print(f"[DEBUG] First 10 scaled values: {scaled[0][:10]}")
+        except Exception as e:
+            print(f"[ERROR] Scaler transform failed: {e}")
+            return json.dumps({'error': f'Scaler transform failed: {e}'})
+        
         vector_list = scaled.flatten().tolist()
 
+        # Compute fusion scores
         artifact  = _fusion.compute_artifact_score(features)
         reality   = _fusion.compute_reality_score(features)
         fusion    = _fusion.fuse_scores(artifact, reality, 0.5)
         explain   = _fusion.generate_explanation(features, fusion)
 
-        return json.dumps({
+        result = {
             'vector':             vector_list,
             'fusion_artifact':    float(artifact),
             'fusion_reality':     float(reality),
             'fusion_confidence':  fusion['confidence'],
             'explanations':       explain[:5],
             'feature_dim':        len(vector_list),
-            'debug_n_features':   _n_features,
-            'debug_vector_len':   len(vector),
-        })
+            'debug_info': {
+                'n_features_expected': _n_features,
+                'n_features_extracted': len(features),
+                'n_missing_features': len(missing_features),
+                'missing_features': missing_features[:10],
+            }
+        }
+        
+        print(f"[DEBUG] Result: artifact={artifact:.4f}, reality={reality:.4f}")
+        
+        return json.dumps(result)
 
     except Exception as e:
         import traceback

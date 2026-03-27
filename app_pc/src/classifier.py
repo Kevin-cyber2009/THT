@@ -17,8 +17,6 @@ logger = logging.getLogger('hybrid_detector.classifier')
 
 
 class VideoClassifier:
-   
-    
     def __init__(self, config: Optional[dict] = None):
         if config is None:
             config = load_config()

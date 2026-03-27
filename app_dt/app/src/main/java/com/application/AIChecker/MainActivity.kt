@@ -137,7 +137,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (!scalerExists) {
                     mainHandler.post {
-                        binding.tvStatus.text = "Thiếu file: models/$scalerName"
+                        binding.tvStatus.text = "Thieu file: models/$scalerName"
                         setBadge("!! ERROR", R.color.danger)
                     }
                     return@execute
@@ -190,25 +190,25 @@ class MainActivity : AppCompatActivity() {
         val available = getAvailableModels()
 
         if (available.isEmpty()) {
-            Toast.makeText(this, "Không tìm thấy file .onnx trong assets/models/", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Khong tim thay file .onnx trong assets/models/", Toast.LENGTH_LONG).show()
             return
         }
 
         val displayNames = available.map { name ->
-            if (name == activeModel) "✓ $name (đang dùng)" else name
+            if (name == activeModel) "✓ $name (dang dung)" else name
         }.toTypedArray()
 
         AlertDialog.Builder(this, R.style.DarkDialog)
-            .setTitle("Chọn Model (${available.size} models)")
+            .setTitle("Chon Model (${available.size} models)")
             .setItems(displayNames) { _, i ->
                 val selected = available[i]
                 if (selected != activeModel) {
                     loadModels(selected)
                 } else {
-                    Toast.makeText(this, "Model này đang được dùng", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Model nay dang duoc dung", Toast.LENGTH_SHORT).show()
                 }
             }
-            .setNegativeButton("Huỷ", null)
+            .setNegativeButton("Huy", null)
             .show()
     }
 
@@ -340,7 +340,8 @@ class MainActivity : AppCompatActivity() {
                     .callAttr("extract_features", videoPath)
                     .toString()
 
-                Log.d(TAG, "Python result: $raw")
+                Log.d(TAG, "Python result length: ${raw.length}")
+                Log.d(TAG, "Python result preview: ${raw.take(500)}")
 
                 val json = JSONObject(raw)
 
@@ -356,6 +357,7 @@ class MainActivity : AppCompatActivity() {
                 val floats    = FloatArray(vectorArr.length()) { vectorArr.getDouble(it).toFloat() }
 
                 Log.d(TAG, "Feature vector length: ${floats.size}")
+                Log.d(TAG, "First 10 values: ${floats.take(10)}")
 
                 val (probFake, label) = runOnnxInference(floats)
 
@@ -385,6 +387,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * FIXED: Properly extract probability from LightGBM ONNX output
+     * LightGBM ONNX returns: [labels, probabilities]
+     * - labels: LongArray of predicted class
+     * - probabilities: List<Map<Long, Float>> - list of class probability maps
+     */
     private fun runOnnxInference(floats: FloatArray): Pair<Float, Int> {
         val session = ortSession ?: throw IllegalStateException("ONNX session chua duoc load")
         val env     = ortEnv    ?: OrtEnvironment.getEnvironment()
@@ -398,21 +406,48 @@ class MainActivity : AppCompatActivity() {
                 val labels = output[0].value as LongArray
                 val label  = labels[0].toInt()
 
+                Log.d(TAG, "ONNX raw label: $label")
+                Log.d(TAG, "ONNX output[0] type: ${output[0].value::class.java}")
+                Log.d(TAG, "ONNX output[1] type: ${output[1].value::class.java}")
+
+                // FIXED: Correctly parse LightGBM ONNX probability output
                 val probFake: Float = try {
-                    val onnxMap = output[1] as ai.onnxruntime.OnnxMap
-                    val map     = onnxMap.value
-                    (map[1L] as? Float) ?: (map[1] as? Float) ?: 0.5f
+                    // output[1] is a List of Maps: List<Map<Long, Float>>
+                    val probList = output[1].value as List<*>
+                    Log.d(TAG, "probList size: ${probList.size}")
+
+                    if (probList.isNotEmpty()) {
+                        val probMap = probList[0] as Map<*, *>
+                        Log.d(TAG, "probMap keys: ${probMap.keys}")
+                        Log.d(TAG, "probMap values: ${probMap.values}")
+
+                        // Get probability for class 1 (FAKE)
+                        val prob = probMap[1L] as? Float
+                            ?: probMap[1] as? Float
+                            ?: probMap["1"] as? Float
+                            ?: 0.5f
+                        prob
+                    } else {
+                        0.5f
+                    }
                 } catch (e1: Exception) {
+                    Log.w(TAG, "Failed to parse ONNX output format 1: $e1")
                     try {
-                        val list    = output[1].value as List<*>
-                        val onnxMap = list[0] as ai.onnxruntime.OnnxMap
-                        val map     = onnxMap.value
-                        (map[1L] as? Float) ?: (map[1] as? Float) ?: 0.5f
+                        // Try alternative format
+                        val probArray = output[1].value as? FloatArray
+                        if (probArray != null && probArray.size >= 2) {
+                            probArray[1]  // Probability of class 1
+                        } else {
+                            0.5f
+                        }
                     } catch (e2: Exception) {
+                        Log.w(TAG, "Failed to parse ONNX output format 2: $e2")
+                        // Fallback: use label-based probability
                         if (label == 1) 0.75f else 0.25f
                     }
                 }
 
+                Log.d(TAG, "Final probFake: $probFake")
                 return Pair(probFake, label)
             }
         }
