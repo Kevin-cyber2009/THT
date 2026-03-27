@@ -36011,3 +36011,162 @@ Extracting features từ 756 videos...
 2026-03-25 23:43:26 - hybrid_detector.preprocessing - INFO - Extracted 1000 frames, shape: (1000, 288, 512, 3)
 2026-03-25 23:43:27 - hybrid_detector - WARNING - Không thể lấy thông tin video: [WinError 2] The system cannot find the file specified
 2026-03-25 23:43:27 - hybrid_detector.forensic - INFO - Bắt đầu forensic analysis (parallel)...
+2026-03-26 23:45:26 - hybrid_detector - INFO - ================================================================================
+2026-03-26 23:45:26 - hybrid_detector - INFO - HYBRID++ DETECTOR - UNIFIED TRAINING
+2026-03-26 23:45:26 - hybrid_detector - INFO - ================================================================================
+2026-03-26 23:45:26 - hybrid_detector - INFO - Config file: config.yaml
+2026-03-26 23:45:26 - hybrid_detector - INFO - Output model: models/onestar.pkl
+2026-03-26 23:45:26 - hybrid_detector - INFO - Feature cache: cache/onestar.npz
+2026-03-26 23:45:26 - hybrid_detector - INFO - 
+Thu thập videos từ: data/
+2026-03-26 23:45:26 - hybrid_detector - INFO - 
+Khởi tạo Feature Extractor...
+2026-03-26 23:45:26 - hybrid_detector.features - INFO - Initializing traditional feature extractors...
+2026-03-26 23:45:26 - hybrid_detector.preprocessing - INFO - VideoPreprocessor initialized: fps=6, resize=(512, 288)
+2026-03-26 23:45:26 - hybrid_detector.forensic - INFO - ForensicAnalyzer initialized
+2026-03-26 23:45:26 - hybrid_detector.reality_engine - INFO - RealityEngine initialized
+2026-03-26 23:45:26 - hybrid_detector.features - INFO - Attempting to load deep learning module...
+2026-03-26 23:45:32 - hybrid_detector.features - INFO - Initializing Ensemble Deep Learning extractors...
+2026-03-26 23:45:32 - hybrid_detector.deep_features - INFO - Loading resnet50...
+2026-03-26 23:45:33 - hybrid_detector.deep_features - INFO - DeepFeatureExtractor initialized: resnet50, device: cpu
+2026-03-26 23:45:33 - hybrid_detector.deep_features - INFO - Loading efficientnet_b0...
+2026-03-26 23:45:33 - hybrid_detector.deep_features - INFO - DeepFeatureExtractor initialized: efficientnet_b0, device: cpu
+2026-03-26 23:45:33 - hybrid_detector.deep_features - INFO - EnsembleDeepExtractor initialized with 2 models
+2026-03-26 23:45:33 - hybrid_detector.features - INFO - ✓ Deep learning ENABLED
+2026-03-26 23:45:33 - hybrid_detector.features - INFO - ✓ FeatureExtractor initialized
+2026-03-26 23:45:33 - hybrid_detector.features - INFO -   Mode: HYBRID (Traditional + Deep)
+2026-03-26 23:45:33 - hybrid_detector.features - INFO -   Expected dimension: 46
+2026-03-26 23:45:33 - hybrid_detector - INFO - ================================================================================
+2026-03-26 23:45:33 - hybrid_detector - INFO - FEATURE EXTRACTION MODE
+2026-03-26 23:45:33 - hybrid_detector - INFO - ================================================================================
+2026-03-26 23:45:33 - hybrid_detector - INFO - Mode: HYBRID (Traditional + Deep Learning)
+2026-03-26 23:45:33 - hybrid_detector - INFO - Total features: 39
+2026-03-26 23:45:33 - hybrid_detector - INFO -   - Traditional: 35
+2026-03-26 23:45:33 - hybrid_detector - INFO -   - Deep Learning: 4
+2026-03-26 23:45:33 - hybrid_detector - INFO -   - Deep Model: ensemble
+2026-03-26 23:45:33 - hybrid_detector - INFO - ================================================================================
+2026-03-26 23:45:33 - hybrid_detector - INFO - 
+Extracting features từ 756 videos...
+2026-03-26 23:45:33 - hybrid_detector.features - INFO - Extracting features from video: data\real\'That sinking feeling' - Reporter 'sinks' live on air - BBC News.mp4
+2026-03-26 23:45:33 - hybrid_detector.preprocessing - INFO - Extracting frames từ: data\real\'That sinking feeling' - Reporter 'sinks' live on air - BBC News.mp4
+2026-03-26 23:45:34 - hybrid_detector.preprocessing - INFO - Extracted 133 frames, shape: (133, 288, 512, 3)
+2026-03-26 23:45:34 - hybrid_detector - WARNING - Không thể lấy thông tin video: [WinError 2] The system cannot find the file specified
+2026-03-26 23:45:34 - hybrid_detector.forensic - INFO - Bắt đầu forensic analysis (parallel)...
+2026-03-26 23:46:13 - hybrid_detector.forensic - INFO - Forensic analysis hoàn tất — 17 features
+2026-03-26 23:46:13 - hybrid_detector.reality_engine - INFO - Bắt đầu reality compliance analysis...
+2026-03-26 23:46:17 - hybrid_detector.reality_engine - INFO - Reality analysis hoàn tất, 11 features
+2026-03-26 23:46:17 - hybrid_detector.features - INFO - ✓ Extracted 28 traditional features
+2026-03-26 23:46:17 - hybrid_detector.deep_features - INFO - Extracting features from model 1/2...
+2026-03-26 23:46:17 - hybrid_detector.deep_features - INFO - Extracting features from model 2/2...
+2026-03-26 23:46:18 - hybrid_detector.deep_features - INFO - Ensemble extraction complete: 44 features
+2026-03-26 23:46:18 - hybrid_detector.features - INFO - ✓ Extracted 44 deep learning features
+2026-03-26 23:46:18 - hybrid_detector.features - INFO - ✓ Total features extracted: 72
+2026-03-26 23:46:18 - hybrid_detector - INFO - 
+✓ Feature dimension: 39
+2026-03-26 23:46:18 - hybrid_detector.features - INFO - Extracting features from video: data\real\1 MINUTE JAPAN TRAVEL VLOG.mp4
+2026-03-26 23:46:18 - hybrid_detector.preprocessing - INFO - Extracting frames từ: data\real\1 MINUTE JAPAN TRAVEL VLOG.mp4
+2026-03-26 23:46:19 - hybrid_detector.preprocessing - INFO - Extracted 500 frames, shape: (500, 288, 512, 3)
+2026-03-26 23:46:20 - hybrid_detector - WARNING - Không thể lấy thông tin video: [WinError 2] The system cannot find the file specified
+2026-03-26 23:46:20 - hybrid_detector.forensic - INFO - Bắt đầu forensic analysis (parallel)...
+2026-03-26 23:47:13 - hybrid_detector.forensic - INFO - Forensic analysis hoàn tất — 17 features
+2026-03-26 23:47:13 - hybrid_detector.reality_engine - INFO - Bắt đầu reality compliance analysis...
+2026-03-26 23:47:25 - hybrid_detector.reality_engine - INFO - Reality analysis hoàn tất, 11 features
+2026-03-26 23:47:25 - hybrid_detector.features - INFO - ✓ Extracted 28 traditional features
+2026-03-26 23:47:25 - hybrid_detector.deep_features - INFO - Extracting features from model 1/2...
+2026-03-26 23:47:26 - hybrid_detector.deep_features - INFO - Extracting features from model 2/2...
+2026-03-26 23:47:26 - hybrid_detector.deep_features - INFO - Ensemble extraction complete: 44 features
+2026-03-26 23:47:26 - hybrid_detector.features - INFO - ✓ Extracted 44 deep learning features
+2026-03-26 23:47:26 - hybrid_detector.features - INFO - ✓ Total features extracted: 72
+2026-03-26 23:47:27 - hybrid_detector.features - INFO - Extracting features from video: data\real\1 minute vlog ⧸⧸ a day in my life.mp4
+2026-03-26 23:47:27 - hybrid_detector.preprocessing - INFO - Extracting frames từ: data\real\1 minute vlog ⧸⧸ a day in my life.mp4
+2026-03-26 23:47:28 - hybrid_detector.preprocessing - INFO - Extracted 358 frames, shape: (358, 288, 512, 3)
+2026-03-26 23:47:28 - hybrid_detector - WARNING - Không thể lấy thông tin video: [WinError 2] The system cannot find the file specified
+2026-03-26 23:47:28 - hybrid_detector.forensic - INFO - Bắt đầu forensic analysis (parallel)...
+2026-03-26 23:48:14 - hybrid_detector.forensic - INFO - Forensic analysis hoàn tất — 17 features
+2026-03-26 23:48:14 - hybrid_detector.reality_engine - INFO - Bắt đầu reality compliance analysis...
+2026-03-26 23:48:22 - hybrid_detector.reality_engine - INFO - Reality analysis hoàn tất, 11 features
+2026-03-26 23:48:22 - hybrid_detector.features - INFO - ✓ Extracted 28 traditional features
+2026-03-26 23:48:22 - hybrid_detector.deep_features - INFO - Extracting features from model 1/2...
+2026-03-26 23:48:23 - hybrid_detector.deep_features - INFO - Extracting features from model 2/2...
+2026-03-26 23:48:23 - hybrid_detector.deep_features - INFO - Ensemble extraction complete: 44 features
+2026-03-26 23:48:23 - hybrid_detector.features - INFO - ✓ Extracted 44 deep learning features
+2026-03-26 23:48:23 - hybrid_detector.features - INFO - ✓ Total features extracted: 72
+2026-03-26 23:48:23 - hybrid_detector.features - INFO - Extracting features from video: data\real\1-MINUTE VLOG AFTER SCHOOL ｜ Jemely Adona.mp4
+2026-03-26 23:48:23 - hybrid_detector.preprocessing - INFO - Extracting frames từ: data\real\1-MINUTE VLOG AFTER SCHOOL ｜ Jemely Adona.mp4
+2026-03-26 23:48:24 - hybrid_detector.preprocessing - INFO - Extracted 382 frames, shape: (382, 288, 512, 3)
+2026-03-26 23:48:24 - hybrid_detector - WARNING - Không thể lấy thông tin video: [WinError 2] The system cannot find the file specified
+2026-03-26 23:48:24 - hybrid_detector.forensic - INFO - Bắt đầu forensic analysis (parallel)...
+2026-03-26 23:49:12 - hybrid_detector.forensic - INFO - Forensic analysis hoàn tất — 17 features
+2026-03-26 23:49:12 - hybrid_detector.reality_engine - INFO - Bắt đầu reality compliance analysis...
+2026-03-26 23:49:19 - hybrid_detector.reality_engine - INFO - Reality analysis hoàn tất, 11 features
+2026-03-26 23:49:19 - hybrid_detector.features - INFO - ✓ Extracted 28 traditional features
+2026-03-26 23:49:19 - hybrid_detector.deep_features - INFO - Extracting features from model 1/2...
+2026-03-26 23:49:20 - hybrid_detector.deep_features - INFO - Extracting features from model 2/2...
+2026-03-26 23:49:21 - hybrid_detector.deep_features - INFO - Ensemble extraction complete: 44 features
+2026-03-26 23:49:21 - hybrid_detector.features - INFO - ✓ Extracted 44 deep learning features
+2026-03-26 23:49:21 - hybrid_detector.features - INFO - ✓ Total features extracted: 72
+2026-03-26 23:49:21 - hybrid_detector.features - INFO - Extracting features from video: data\real\10 angles that will take your interviews to the next level.mp4
+2026-03-26 23:49:21 - hybrid_detector.preprocessing - INFO - Extracting frames từ: data\real\10 angles that will take your interviews to the next level.mp4
+2026-03-26 23:49:23 - hybrid_detector.preprocessing - INFO - Đạt giới hạn 1000 frames
+2026-03-26 23:49:23 - hybrid_detector.preprocessing - INFO - Extracted 1000 frames, shape: (1000, 288, 512, 3)
+2026-03-26 23:49:24 - hybrid_detector - WARNING - Không thể lấy thông tin video: [WinError 2] The system cannot find the file specified
+2026-03-26 23:49:24 - hybrid_detector.forensic - INFO - Bắt đầu forensic analysis (parallel)...
+2026-03-26 23:50:41 - hybrid_detector.forensic - INFO - Forensic analysis hoàn tất — 17 features
+2026-03-26 23:50:41 - hybrid_detector.reality_engine - INFO - Bắt đầu reality compliance analysis...
+2026-03-26 23:51:09 - hybrid_detector.reality_engine - INFO - Reality analysis hoàn tất, 11 features
+2026-03-26 23:51:09 - hybrid_detector.features - INFO - ✓ Extracted 28 traditional features
+2026-03-26 23:51:09 - hybrid_detector.deep_features - INFO - Extracting features from model 1/2...
+2026-03-26 23:51:10 - hybrid_detector.deep_features - INFO - Extracting features from model 2/2...
+2026-03-26 23:51:11 - hybrid_detector.deep_features - INFO - Ensemble extraction complete: 44 features
+2026-03-26 23:51:11 - hybrid_detector.features - INFO - ✓ Extracted 44 deep learning features
+2026-03-26 23:51:11 - hybrid_detector.features - INFO - ✓ Total features extracted: 72
+2026-03-26 23:51:11 - hybrid_detector.features - INFO - Extracting features from video: data\real\4K Relaxing Nature - Short Video Clips of Nature.mp4
+2026-03-26 23:51:11 - hybrid_detector.preprocessing - INFO - Extracting frames từ: data\real\4K Relaxing Nature - Short Video Clips of Nature.mp4
+2026-03-26 23:51:12 - hybrid_detector.preprocessing - INFO - Extracted 312 frames, shape: (312, 288, 512, 3)
+2026-03-26 23:51:12 - hybrid_detector - WARNING - Không thể lấy thông tin video: [WinError 2] The system cannot find the file specified
+2026-03-26 23:51:12 - hybrid_detector.forensic - INFO - Bắt đầu forensic analysis (parallel)...
+2026-03-26 23:51:57 - hybrid_detector.forensic - INFO - Forensic analysis hoàn tất — 17 features
+2026-03-26 23:51:57 - hybrid_detector.reality_engine - INFO - Bắt đầu reality compliance analysis...
+2026-03-26 23:52:05 - hybrid_detector.reality_engine - INFO - Reality analysis hoàn tất, 11 features
+2026-03-26 23:52:05 - hybrid_detector.features - INFO - ✓ Extracted 28 traditional features
+2026-03-26 23:52:05 - hybrid_detector.deep_features - INFO - Extracting features from model 1/2...
+2026-03-26 23:52:06 - hybrid_detector.deep_features - INFO - Extracting features from model 2/2...
+2026-03-26 23:52:06 - hybrid_detector.deep_features - INFO - Ensemble extraction complete: 44 features
+2026-03-26 23:52:06 - hybrid_detector.features - INFO - ✓ Extracted 44 deep learning features
+2026-03-26 23:52:06 - hybrid_detector.features - INFO - ✓ Total features extracted: 72
+2026-03-26 23:52:06 - hybrid_detector.features - INFO - Extracting features from video: data\real\4K Relaxing Nature Sounds - Short Video Clips of Nature.mp4
+2026-03-26 23:52:06 - hybrid_detector.preprocessing - INFO - Extracting frames từ: data\real\4K Relaxing Nature Sounds - Short Video Clips of Nature.mp4
+2026-03-26 23:52:07 - hybrid_detector.preprocessing - INFO - Extracted 349 frames, shape: (349, 288, 512, 3)
+2026-03-26 23:52:08 - hybrid_detector - WARNING - Không thể lấy thông tin video: [WinError 2] The system cannot find the file specified
+2026-03-26 23:52:08 - hybrid_detector.forensic - INFO - Bắt đầu forensic analysis (parallel)...
+2026-03-26 23:52:54 - hybrid_detector.forensic - INFO - Forensic analysis hoàn tất — 17 features
+2026-03-26 23:52:54 - hybrid_detector.reality_engine - INFO - Bắt đầu reality compliance analysis...
+2026-03-26 23:53:03 - hybrid_detector.reality_engine - INFO - Reality analysis hoàn tất, 11 features
+2026-03-26 23:53:03 - hybrid_detector.features - INFO - ✓ Extracted 28 traditional features
+2026-03-26 23:53:03 - hybrid_detector.deep_features - INFO - Extracting features from model 1/2...
+2026-03-26 23:53:04 - hybrid_detector.deep_features - INFO - Extracting features from model 2/2...
+2026-03-26 23:53:05 - hybrid_detector.deep_features - INFO - Ensemble extraction complete: 44 features
+2026-03-26 23:53:05 - hybrid_detector.features - INFO - ✓ Extracted 44 deep learning features
+2026-03-26 23:53:05 - hybrid_detector.features - INFO - ✓ Total features extracted: 72
+2026-03-26 23:53:05 - hybrid_detector.features - INFO - Extracting features from video: data\real\5 SIMPLE Tips To Stand Out Like a Pro on Zoom!.mp4
+2026-03-26 23:53:05 - hybrid_detector.preprocessing - INFO - Extracting frames từ: data\real\5 SIMPLE Tips To Stand Out Like a Pro on Zoom!.mp4
+2026-03-26 23:53:07 - hybrid_detector.preprocessing - INFO - Đạt giới hạn 1000 frames
+2026-03-26 23:53:07 - hybrid_detector.preprocessing - INFO - Extracted 1000 frames, shape: (1000, 288, 512, 3)
+2026-03-26 23:53:08 - hybrid_detector - WARNING - Không thể lấy thông tin video: [WinError 2] The system cannot find the file specified
+2026-03-26 23:53:08 - hybrid_detector.forensic - INFO - Bắt đầu forensic analysis (parallel)...
+2026-03-26 23:54:24 - hybrid_detector.forensic - INFO - Forensic analysis hoàn tất — 17 features
+2026-03-26 23:54:24 - hybrid_detector.reality_engine - INFO - Bắt đầu reality compliance analysis...
+2026-03-26 23:54:45 - hybrid_detector.reality_engine - INFO - Reality analysis hoàn tất, 11 features
+2026-03-26 23:54:45 - hybrid_detector.features - INFO - ✓ Extracted 28 traditional features
+2026-03-26 23:54:45 - hybrid_detector.deep_features - INFO - Extracting features from model 1/2...
+2026-03-26 23:54:46 - hybrid_detector.deep_features - INFO - Extracting features from model 2/2...
+2026-03-26 23:54:46 - hybrid_detector.deep_features - INFO - Ensemble extraction complete: 44 features
+2026-03-26 23:54:46 - hybrid_detector.features - INFO - ✓ Extracted 44 deep learning features
+2026-03-26 23:54:46 - hybrid_detector.features - INFO - ✓ Total features extracted: 72
+2026-03-26 23:54:46 - hybrid_detector.features - INFO - Extracting features from video: data\real\60 Second Cinematography - Outdoor Interview - Controlling harsh sunlight.mp4
+2026-03-26 23:54:46 - hybrid_detector.preprocessing - INFO - Extracting frames từ: data\real\60 Second Cinematography - Outdoor Interview - Controlling harsh sunlight.mp4
+2026-03-26 23:54:47 - hybrid_detector.preprocessing - INFO - Extracted 356 frames, shape: (356, 288, 512, 3)
+2026-03-26 23:54:47 - hybrid_detector - WARNING - Không thể lấy thông tin video: [WinError 2] The system cannot find the file specified
+2026-03-26 23:54:47 - hybrid_detector.forensic - INFO - Bắt đầu forensic analysis (parallel)...
+2026-03-26 23:55:34 - hybrid_detector.forensic - INFO - Forensic analysis hoàn tất — 17 features
+2026-03-26 23:55:34 - hybrid_detector.reality_engine - INFO - Bắt đầu reality compliance analysis...

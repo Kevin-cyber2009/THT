@@ -1,11 +1,3 @@
-# src/forensic.py
-"""
-Module forensic: Phân tích forensic (FFT/DCT, PRNU residual, optical flow)
-Optimized: parallel execution + vectorized numpy
-Fix: shape mismatch trong optical flow corrcoef
-Logic tính toán 100% giống bản gốc — không ảnh hưởng accuracy
-"""
-
 import cv2
 import numpy as np
 from scipy import fft, signal
@@ -39,9 +31,6 @@ class ForensicAnalyzer:
 
         logger.info("ForensicAnalyzer initialized")
 
-    # ─────────────────────────────────────────────
-    # Helpers
-    # ─────────────────────────────────────────────
 
     @staticmethod
     def _to_gray_float(frames: np.ndarray) -> np.ndarray:
@@ -56,9 +45,6 @@ class ForensicAnalyzer:
             return np.array([cv2.cvtColor(f, cv2.COLOR_RGB2GRAY) for f in u8])
         return u8.squeeze(-1)
 
-    # ─────────────────────────────────────────────
-    # FFT — vectorized numpy (kết quả y hệt scipy loop)
-    # ─────────────────────────────────────────────
 
     def compute_fft_features(self, frames: np.ndarray) -> Dict[str, float]:
         gray     = self._to_gray_float(frames)
@@ -96,9 +82,6 @@ class ForensicAnalyzer:
         logger.debug(f"FFT features: {features}")
         return features
 
-    # ─────────────────────────────────────────────
-    # DCT — vectorized scipy (100% giống cũ)
-    # ─────────────────────────────────────────────
 
     def compute_dct_features(self, frames: np.ndarray) -> Dict[str, float]:
         gray      = self._to_gray_float(frames)
@@ -117,10 +100,7 @@ class ForensicAnalyzer:
         logger.debug(f"DCT features: {features}")
         return features
 
-    # ─────────────────────────────────────────────
-    # PRNU — 100% giống cũ
-    # ─────────────────────────────────────────────
-
+    
     def compute_prnu_residual(self, frames: np.ndarray) -> Dict[str, float]:
         features = {}
         gray_u8  = self._to_gray_uint8(frames)
@@ -163,10 +143,6 @@ class ForensicAnalyzer:
         logger.debug(f"PRNU features: {features}")
         return features
 
-    # ─────────────────────────────────────────────
-    # Optical Flow — fix shape mismatch
-    # ─────────────────────────────────────────────
-
     def compute_optical_flow(self, frames: np.ndarray) -> Dict[str, float]:
         features = {}
         gray_u8  = self._to_gray_uint8(frames)
@@ -208,7 +184,6 @@ class ForensicAnalyzer:
             for i in range(len(mag_stack) - 1):
                 a       = mag_stack[i].flatten()
                 b       = mag_stack[i + 1].flatten()
-                # ── FIX: cắt về cùng độ dài để tránh broadcast error ──
                 min_len = min(len(a), len(b))
                 c = np.corrcoef(a[:min_len], b[:min_len])[0, 1]
                 if not np.isnan(c):
@@ -220,15 +195,8 @@ class ForensicAnalyzer:
         logger.debug(f"Optical flow features: {features}")
         return features
 
-    # ─────────────────────────────────────────────
-    # analyze — PARALLEL
-    # ─────────────────────────────────────────────
 
     def analyze(self, frames: np.ndarray) -> Dict[str, Any]:
-        """
-        FFT / DCT / PRNU / Optical Flow chạy SONG SONG.
-        Kết quả từng hàm 100% giống cũ — chỉ thứ tự chạy thay đổi.
-        """
         logger.info("Bắt đầu forensic analysis (parallel)...")
 
         tasks = {

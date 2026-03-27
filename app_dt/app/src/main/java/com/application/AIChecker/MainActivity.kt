@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
+import android.util.Log
 import android.view.View
 import android.widget.EditText
 import android.widget.TextView
@@ -41,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val REQ_PICK_VIDEO = 1001
         private var activeModel = "x.onnx"
+        private const val TAG = "AIChecker"
     }
 
     private fun getAvailableModels(): Array<String> {
@@ -143,12 +145,15 @@ class MainActivity : AppCompatActivity() {
 
                 val scalerFile = copyAsset("models/$scalerName")
 
+                // Load Python detector module
                 val result = Python.getInstance()
                     .getModule("detector")
                     .callAttr("load_models",
                         scalerFile.absolutePath,
                         configFile.absolutePath)
                     .toString()
+
+                Log.d(TAG, "load_models result: $result")
 
                 if (result != "OK") {
                     mainHandler.post {
@@ -172,6 +177,7 @@ class MainActivity : AppCompatActivity() {
                     setControlsEnabled(true)
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "Load models failed", e)
                 mainHandler.post {
                     binding.tvStatus.text = "Load failed: ${e.message}"
                     setBadge("!! ERROR", R.color.danger)
@@ -309,6 +315,7 @@ class MainActivity : AppCompatActivity() {
                     mainHandler.post { onSuccess(path, name) }
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "Download failed", e)
                 mainHandler.post { onError("Download failed: ${e.message}") }
             }
         }
@@ -326,10 +333,15 @@ class MainActivity : AppCompatActivity() {
 
         executor.execute {
             try {
+                Log.d(TAG, "Starting analysis for: $videoPath")
+
                 val raw  = Python.getInstance()
                     .getModule("detector")
                     .callAttr("extract_features", videoPath)
                     .toString()
+
+                Log.d(TAG, "Python result: $raw")
+
                 val json = JSONObject(raw)
 
                 if (json.has("error")) {
@@ -342,7 +354,12 @@ class MainActivity : AppCompatActivity() {
 
                 val vectorArr = json.getJSONArray("vector")
                 val floats    = FloatArray(vectorArr.length()) { vectorArr.getDouble(it).toFloat() }
+
+                Log.d(TAG, "Feature vector length: ${floats.size}")
+
                 val (probFake, label) = runOnnxInference(floats)
+
+                Log.d(TAG, "ONNX result - probFake: $probFake, label: $label")
 
                 val finalJson = JSONObject().apply {
                     put("prediction",       if (label == 1) "FAKE" else "REAL")
@@ -359,6 +376,7 @@ class MainActivity : AppCompatActivity() {
                     setControlsEnabled(true)
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "Analysis failed", e)
                 mainHandler.post {
                     showError("Analysis failed: ${e.message}")
                     setControlsEnabled(true)
@@ -476,6 +494,7 @@ class MainActivity : AppCompatActivity() {
         binding.tvStatus.text        = msg
         binding.progressBar.progress = 0
         setBadge("!! ERROR", R.color.danger)
+        Log.e(TAG, "Error: $msg")
     }
 
 

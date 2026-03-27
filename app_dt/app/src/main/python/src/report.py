@@ -1,9 +1,3 @@
-# src/report.py
-
-"""
-Module report: Tạo báo cáo PDF và JSON từ kết quả phân tích
-"""
-
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -11,7 +5,7 @@ from datetime import datetime
 import logging
 
 import matplotlib
-matplotlib.use('Agg')  # Backend không cần display
+matplotlib.use('Agg')  
 import matplotlib.pyplot as plt
 import seaborn as sns
 from reportlab.lib.pagesizes import A4
@@ -28,17 +22,7 @@ logger = logging.getLogger('hybrid_detector.report')
 
 
 class ReportGenerator:
-    """
-    Class tạo báo cáo phân tích video
-    """
-    
     def __init__(self, config: Optional[dict] = None):
-        """
-        Khởi tạo ReportGenerator
-        
-        Args:
-            config: Dictionary cấu hình
-        """
         if config is None:
             config = load_config()
         
@@ -47,7 +31,6 @@ class ReportGenerator:
         self.plot_dpi = self.report_config.get('plot_dpi', 100)
         self.include_plots = self.report_config.get('include_plots', True)
         
-        # Set plot style
         plt_style = self.report_config.get('plot_style', 'seaborn-v0_8-darkgrid')
         try:
             plt.style.use(plt_style)
@@ -57,13 +40,6 @@ class ReportGenerator:
         logger.info("ReportGenerator initialized")
     
     def generate_score_plot(self, scores: Dict[str, float], output_path: str):
-        """
-        Tạo biểu đồ thanh scores
-        
-        Args:
-            scores: Dictionary scores
-            output_path: Đường dẫn lưu plot
-        """
         fig, ax = plt.subplots(figsize=(8, 5))
         
         score_names = ['Artifact\nScore', 'Reality\nScore', 'Stress\nScore', 'Final\nProbability']
@@ -78,7 +54,6 @@ class ReportGenerator:
         
         bars = ax.barh(score_names, score_values, color=colors_map, alpha=0.7)
         
-        # Thêm giá trị trên thanh
         for bar, value in zip(bars, score_values):
             ax.text(value + 0.02, bar.get_y() + bar.get_height()/2, 
                    f'{value:.2f}', va='center', fontsize=10)
@@ -100,15 +75,6 @@ class ReportGenerator:
         output_path: str,
         top_n: int = 10
     ):
-        """
-        Tạo biểu đồ top features
-        
-        Args:
-            features: Dictionary features
-            output_path: Đường dẫn lưu
-            top_n: Số features hiển thị
-        """
-        # Sort features theo absolute value
         sorted_features = sorted(features.items(), key=lambda x: abs(x[1]), reverse=True)[:top_n]
         
         names = [f[0] for f in sorted_features]
@@ -134,16 +100,8 @@ class ReportGenerator:
         output_data: Dict[str, Any],
         output_path: str
     ):
-        """
-        Tạo PDF report đầy đủ
-        
-        Args:
-            output_data: Dictionary kết quả phân tích
-            output_path: Đường dẫn PDF output
-        """
         logger.info(f"Generating PDF report: {output_path}")
         
-        # Tạo document
         doc = SimpleDocTemplate(
             output_path,
             pagesize=self.page_size,
@@ -156,7 +114,6 @@ class ReportGenerator:
         story = []
         styles = getSampleStyleSheet()
         
-        # Custom styles
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=styles['Heading1'],
@@ -174,11 +131,9 @@ class ReportGenerator:
             spaceAfter=10
         )
         
-        # Title
         story.append(Paragraph("Video AI Detection Report", title_style))
         story.append(Spacer(1, 0.5*cm))
         
-        # Metadata table
         metadata = output_data.get('metadata', {})
         meta_data = [
             ['Video:', Path(output_data['video_path']).name],
@@ -202,14 +157,12 @@ class ReportGenerator:
         story.append(meta_table)
         story.append(Spacer(1, 1*cm))
         
-        # Result section
         story.append(Paragraph("Analysis Result", heading_style))
         
         prediction = output_data['prediction']
         confidence = output_data['confidence']
         probability = output_data['final_probability']
         
-        # Prediction box
         pred_color = colors.HexColor('#e74c3c') if prediction == 'FAKE' else colors.HexColor('#2ecc71')
         
         result_data = [
@@ -232,13 +185,11 @@ class ReportGenerator:
         story.append(result_table)
         story.append(Spacer(1, 1*cm))
         
-        # Scores section
         story.append(Paragraph("Component Scores", heading_style))
         
         scores = output_data['scores']
         scores['final_probability'] = probability
         
-        # Generate score plot
         if self.include_plots:
             plot_path = Path(output_path).parent / '_temp_scores.png'
             self.generate_score_plot(scores, str(plot_path))
@@ -247,9 +198,8 @@ class ReportGenerator:
                 img = Image(str(plot_path), width=14*cm, height=9*cm)
                 story.append(img)
                 story.append(Spacer(1, 0.5*cm))
-                plot_path.unlink()  # Delete temp file
+                plot_path.unlink() 
         
-        # Explanations
         story.append(Paragraph("Detailed Explanation", heading_style))
         
         for i, exp in enumerate(output_data.get('explanations', []), 1):
@@ -257,10 +207,8 @@ class ReportGenerator:
             story.append(Paragraph(bullet_text, styles['Normal']))
             story.append(Spacer(1, 0.3*cm))
         
-        # Page break
         story.append(PageBreak())
         
-        # Feature details
         story.append(Paragraph("Key Features", heading_style))
         
         features = output_data.get('features', {})
@@ -276,7 +224,6 @@ class ReportGenerator:
         
         story.append(Spacer(1, 0.5*cm))
         
-        # Feature table
         feat_data = [['Feature Name', 'Value']]
         for name, value in sorted(features.items())[:15]:  # Top 15
             feat_data.append([name, f"{value:.4f}"])
@@ -296,11 +243,9 @@ class ReportGenerator:
         story.append(feat_table)
         story.append(Spacer(1, 1*cm))
         
-        # Footer
         footer_text = f"Generated by Hybrid++ Reality Stress Detector v{output_data.get('version', '1.0.0')}"
         story.append(Paragraph(footer_text, styles['Normal']))
         
-        # Build PDF
         doc.build(story)
         
         logger.info(f"PDF report generated: {output_path}")
@@ -310,13 +255,6 @@ class ReportGenerator:
         output_data: Dict[str, Any],
         output_path: str
     ):
-        """
-        Lưu báo cáo dạng JSON
-        
-        Args:
-            output_data: Dictionary kết quả
-            output_path: Đường dẫn JSON
-        """
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
         
