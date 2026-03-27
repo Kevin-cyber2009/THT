@@ -58,9 +58,9 @@ class FeatureExtractor:
             logger.info("Deep learning features disabled in config")
         
         if self.use_deep:
-            self.expected_dim = config.get('features', {}).get('expected_dimension', 46)
+            self.expected_dim = config.get('features', {}).get('expected_dimension', 39)
         else:
-            self.expected_dim = 35  # Traditional only
+            self.expected_dim = 28  # Traditional only (17 forensic + 11 reality)
         
         logger.info(f"✓ FeatureExtractor initialized")
         logger.info(f"  Mode: {'HYBRID (Traditional + Deep)' if self.use_deep else 'TRADITIONAL ONLY'}")
@@ -173,8 +173,8 @@ class FeatureExtractor:
         
         info = {
             'total_features': len(feature_names),
-            'traditional_features': 35,
-            'deep_features': len(feature_names) - 35 if self.use_deep else 0,
+            'traditional_features': 28,
+            'deep_features': len(feature_names) - 28 if self.use_deep else 0,
             'use_deep_learning': self.use_deep,
             'feature_names': feature_names,
             'expected_dimension': self.expected_dim,
@@ -188,5 +188,4 @@ class FeatureExtractor:
                 info['ensemble_models'] = [m.model_type for m in self.deep_extractor.models]
         
         return info
-
 

@@ -8,8 +8,8 @@
   },
   "features": {
     "total_features": 39,
-    "traditional_features": 35,
-    "deep_features": 4,
+    "traditional_features": 28,
+    "deep_features": 11,
     "use_deep_learning": true,
     "feature_names": [
       "fft_mean",
@@ -52,7 +52,7 @@
       "deep_similarity_std",
       "deep_sparsity"
     ],
-    "expected_dimension": 46,
+    "expected_dimension": 39,
     "deep_model": "ensemble",
     "ensemble_models": [
       "resnet50",

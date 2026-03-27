@@ -51,7 +51,7 @@ deep_learning:
     - 'efficientnet_b0'
 
 features:
-  expected_dimension: 46    
+  expected_dimension: 39    # 28 traditional + 11 deep features
   normalization: 'standard'
   use_deep_features: true   
 

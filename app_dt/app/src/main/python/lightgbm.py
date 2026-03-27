@@ -1,5 +1,4 @@
 class LGBMClassifier:
-    """Stub class - ONNX inference is used instead"""
     def __init__(self, **kwargs):
         pass
     
@@ -14,7 +13,6 @@ class LGBMClassifier:
 
 
 class LGBMRegressor:
-    """Stub class - ONNX inference is used instead"""
     def __init__(self, **kwargs):
         pass
     
@@ -26,13 +24,11 @@ class LGBMRegressor:
 
 
 class LGBMRanker:
-    """Stub class - ONNX inference is used instead"""
     def __init__(self, **kwargs):
         pass
 
 
 class LGBMModel:
-    """Stub class - ONNX inference is used instead"""
     def __init__(self, **kwargs):
         pass
 
