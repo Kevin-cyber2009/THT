@@ -41,7 +41,6 @@ def _resolve_model_path(config: dict, model_filename: str) -> Optional[str]:
     logger.warning(f"Model {model_filename} not found in any location: {candidates}")
     return None
 
-
 class DeepFeatureExtractor:
 
     def __init__(self, config: Optional[dict] = None, model_path: Optional[str] = None):
@@ -79,7 +78,6 @@ class DeepFeatureExtractor:
             logger.error(f"Error loading ONNX model: {e}")
             raise
 
-        # ImageNet normalization constants
         self.mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
         self.std  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
@@ -87,7 +85,6 @@ class DeepFeatureExtractor:
         frame_uint8 = (frame * 255).astype(np.uint8)
         img = Image.fromarray(frame_uint8)
 
-        # Resize then center-crop to 224×224
         img  = img.resize((256, 256), Image.BILINEAR)
         left = (256 - 224) // 2
         top  = (256 - 224) // 2
@@ -222,7 +219,6 @@ class EnsembleDeepExtractor:
                 continue
 
             try:
-                # Temporarily set model_type in a copy of config
                 import copy
                 cfg_copy = copy.deepcopy(config)
                 cfg_copy['deep_learning']['model_type'] = model_type
@@ -271,9 +267,6 @@ class EnsembleDeepExtractor:
                     all_features[f'ensemble_{base_key}_mean'] = float(np.mean(values))
                     all_features[f'ensemble_{base_key}_std']  = float(np.std(values))
 
-        # ── CRITICAL: expose the 11 canonical deep_* names ──────────────────
-        # The scaler was trained on deep_feat_mean, ... not resnet50_deep_feat_mean.
-        # Average across ensemble models and expose under the canonical names.
         canonical_names = self.models[0].get_feature_names()
         for base_key in canonical_names:
             if base_key not in all_features:

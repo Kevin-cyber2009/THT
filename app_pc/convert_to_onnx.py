@@ -39,7 +39,6 @@ def convert(pkl_path: str, onnx_path: str, target_ir_version: int = 8):
     )
     print(f"✅ n_features    : {n_features}")
 
-    # Build canonical feature names if missing
     if feature_names is None:
         print("⚠️  feature_names không có trong pkl — dùng fallback order")
         traditional = [
@@ -65,12 +64,10 @@ def convert(pkl_path: str, onnx_path: str, target_ir_version: int = 8):
             feature_names = traditional
         print(f"   → Dùng fallback {len(feature_names)} features")
 
-    # Validate feature count
     if len(feature_names) != n_features:
         print(f"⚠️  feature_names length {len(feature_names)} != scaler expects {n_features}")
         print("   Adjusting feature_names to match scaler...")
         if len(feature_names) < n_features:
-            # Pad with dummy names
             for i in range(len(feature_names), n_features):
                 feature_names.append(f'feature_{i}')
         else:
@@ -89,18 +86,16 @@ def convert(pkl_path: str, onnx_path: str, target_ir_version: int = 8):
     onnx_model = convert_lightgbm(
         model,
         initial_types=initial_types,
-        target_opset=12  # opset 12 is safe and widely supported
+        target_opset=12  
     )
 
     import onnx
     onnx.save(onnx_model, onnx_path)
     print(f"✅ ONNX saved   : {onnx_path}")
 
-    # Downgrade IR version for Android compatibility
     downgrade_onnx_ir(onnx_path, target_ir_version=target_ir_version)
     print(f"✅ IR version set to {target_ir_version} for onnxruntime-android compatibility")
 
-    # Save scaler separately
     model_stem  = os.path.splitext(os.path.basename(onnx_path))[0]
     scaler_path = os.path.join(os.path.dirname(onnx_path), f"{model_stem}_scaler.pkl")
 
@@ -114,7 +109,6 @@ def convert(pkl_path: str, onnx_path: str, target_ir_version: int = 8):
     print(f"✅ Scaler saved : {scaler_path}")
     print(f"   feature_names ({len(feature_names)}): {feature_names[:5]} ... {feature_names[-3:]}")
 
-    # ── Test ONNX inference ─────────────────────────────────────────────────
     print(f"\n🧪 Testing ONNX inference ...")
     import onnxruntime as rt
 
@@ -132,11 +126,9 @@ def convert(pkl_path: str, onnx_path: str, target_ir_version: int = 8):
 
     print(f"✅ ONNX output  : label={label}, proba={proba_str}")
 
-    # ── Test IR version ─────────────────────────────────────────────────────
     final_model = onnx.load(onnx_path)
     print(f"✅ Final IR version: {final_model.ir_version}")
 
-    # ── Consistency check ───────────────────────────────────────────────────
     print(f"\n🔁 Consistency check (PC scaler → ONNX) ...")
     test_input  = np.random.rand(5, n_features).astype(np.float32)
     test_scaled = scaler.transform(test_input).astype(np.float32)

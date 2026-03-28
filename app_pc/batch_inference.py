@@ -18,7 +18,6 @@ def collect_videos(input_path: str):
     path = Path(input_path)
     
     if path.is_file() and path.suffix == '.txt':
-        # Đọc từ file txt
         with open(path, 'r') as f:
             videos = [line.strip() for line in f if line.strip()]
         return videos

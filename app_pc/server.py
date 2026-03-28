@@ -22,12 +22,12 @@ logger = logging.getLogger(__name__)
 
 MODEL_PATH    = os.environ.get('MODEL_PATH',  'models/alpha.pkl')
 CONFIG_PATH   = os.environ.get('CONFIG_PATH', 'config.yaml')
-MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+MAX_FILE_SIZE = 100 * 1024 * 1024  
 start_time    = time.time()
 
 
 _jobs_lock = threading.Lock()
-_jobs: dict = {}   # { job_id: { status, result, error, updated_at } }
+_jobs: dict = {}  
 
 def set_job(job_id: str, data: dict):
     with _jobs_lock:

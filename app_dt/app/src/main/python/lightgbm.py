@@ -34,16 +34,13 @@ class LGBMModel:
 
 
 class Dataset:
-    """Stub class - ONNX inference is used instead"""
     def __init__(self, data, label=None):
         pass
 
 
 def train(params, train_set, num_boost_round=100, **kwargs):
-    """Stub function - ONNX inference is used instead"""
     raise RuntimeError("LightGBM not available on mobile - use ONNX instead")
 
 
 def cv(params, train_set, num_boost_round=100, nfold=5, **kwargs):
-    """Stub function - ONNX inference is used instead"""
     raise RuntimeError("LightGBM not available on mobile - use ONNX instead")

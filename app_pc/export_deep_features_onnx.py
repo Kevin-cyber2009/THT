@@ -5,12 +5,6 @@ import os
 
 
 def downgrade_onnx_ir(onnx_path: str, target_ir_version: int = 8):
-    """
-    Downgrade ONNX model IR version to be compatible with older runtimes.
-    onnxruntime-android 1.16.3 supports max IR version 9.
-    onnxruntime-android 1.19.0 supports IR version 10.
-    Setting to 8 ensures maximum compatibility.
-    """
     import onnx
     model = onnx.load(onnx_path)
     original_ir = model.ir_version
@@ -20,11 +14,9 @@ def downgrade_onnx_ir(onnx_path: str, target_ir_version: int = 8):
 
 
 def convert_resnet50(output_path: str):
-    """Convert ResNet50 sang ONNX với opset 11 và IR version 8"""
     print("Converting ResNet50...")
 
     model = models.resnet50(weights='IMAGENET1K_V1')
-    # Remove final FC layer để lấy 2048-dim features
     model = torch.nn.Sequential(*list(model.children())[:-1])
     model.eval()
 
@@ -40,12 +32,11 @@ def convert_resnet50(output_path: str):
             "input": {0: "batch_size"},
             "output": {0: "batch_size"}
         },
-        opset_version=11,  # opset 11 → IR version 6-7, safe for all runtimes
+        opset_version=11, 
         do_constant_folding=True,
         export_params=True,
     )
 
-    # Ensure IR version compatibility
     downgrade_onnx_ir(output_path, target_ir_version=8)
 
     print(f"✓ ResNet50 saved to: {output_path}")
@@ -53,11 +44,9 @@ def convert_resnet50(output_path: str):
 
 
 def convert_efficientnet_b0(output_path: str):
-    """Convert EfficientNet-B0 sang ONNX với opset 11 và IR version 8"""
     print("Converting EfficientNet-B0...")
 
     model = models.efficientnet_b0(weights='IMAGENET1K_V1')
-    # Replace classifier với Identity để lấy 1280-dim features
     model.classifier = torch.nn.Identity()
     model.eval()
 
@@ -78,7 +67,6 @@ def convert_efficientnet_b0(output_path: str):
         export_params=True,
     )
 
-    # Ensure IR version compatibility
     downgrade_onnx_ir(output_path, target_ir_version=8)
 
     print(f"✓ EfficientNet-B0 saved to: {output_path}")
@@ -86,7 +74,6 @@ def convert_efficientnet_b0(output_path: str):
 
 
 def _print_model_info(onnx_path: str):
-    """Print model IR version and opset info"""
     try:
         import onnx
         model = onnx.load(onnx_path)
@@ -97,7 +84,6 @@ def _print_model_info(onnx_path: str):
 
 
 def verify_onnx_model(onnx_path: str):
-    """Kiểm tra ONNX model có hoạt động không"""
     try:
         import onnxruntime as ort
         import numpy as np

@@ -4,7 +4,6 @@ from pathlib import Path
 
 
 def check_python_version():
-    """Kiểm tra Python version"""
     version = sys.version_info
     if version.major < 3 or (version.major == 3 and version.minor < 8):
         print("❌ Python version phải >= 3.8")

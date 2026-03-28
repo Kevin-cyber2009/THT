@@ -20,7 +20,6 @@ def extract_scaler_params(pkl_path: str, output_dir: str = None):
         print("ERROR: No 'scaler' key in pkl file")
         return None
 
-    # Extract parameters
     if not hasattr(scaler, 'mean_') or not hasattr(scaler, 'scale_'):
         print("ERROR: Scaler does not have mean_ or scale_ attributes")
         print("       Was the scaler fitted?")
@@ -35,7 +34,6 @@ def extract_scaler_params(pkl_path: str, output_dir: str = None):
     print(f"  mean  (first 5): {[f'{v:.4f}' for v in mean_[:5]]}")
     print(f"  scale (first 5): {[f'{v:.4f}' for v in scale_[:5]]}")
 
-    # Build output
     params = {
         "n_features": n_feat,
         "mean_":      mean_,
@@ -46,7 +44,6 @@ def extract_scaler_params(pkl_path: str, output_dir: str = None):
         "note": "Use (x - mean_[i]) / scale_[i] for manual scaling — no sklearn needed"
     }
 
-    # Determine output path
     model_stem = os.path.splitext(os.path.basename(pkl_path))[0]
     if output_dir is None:
         output_dir = os.path.dirname(pkl_path)
@@ -82,7 +79,6 @@ def verify_params(params_path: str, pkl_path: str):
         scale_ = np.array(params['scale_'])
         n_feat = params['n_features']
 
-        # Random test vector
         x = np.random.randn(n_feat).reshape(1, -1)
 
         sklearn_result = scaler.transform(x).flatten()

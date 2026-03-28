@@ -179,15 +179,12 @@ def main():
     
     args = parser.parse_args()
     
-    # Load config
     config = load_config(args.config)
     
-    # Force CPU if requested
     if args.force_cpu and 'deep_learning' in config:
         config['deep_learning']['use_gpu'] = False
         logger.info("Forced CPU mode for deep learning")
     
-    # Auto-generate output paths
     use_deep = config.get('features', {}).get('use_deep_features', False)
     
     if args.output_model is None:
@@ -202,7 +199,6 @@ def main():
         else:
             args.cache_features = 'cache/features_traditional.npz'
     
-    # Setup logging
     logger = setup_logging(config)
     logger.info("=" * 80)
     logger.info("HYBRID++ DETECTOR - UNIFIED TRAINING")
@@ -211,15 +207,12 @@ def main():
     logger.info(f"Output model: {args.output_model}")
     logger.info(f"Feature cache: {args.cache_features}")
     
-    # Collect video paths
     logger.info(f"\nThu thập videos từ: {args.data_dir}")
     video_paths, labels = collect_video_paths(args.data_dir)
     
-    # Initialize feature extractor
     logger.info("\nKhởi tạo Feature Extractor...")
     feature_extractor = FeatureExtractor(config)
     
-    # Extract features (tự động traditional + deep nếu enabled)
     X, y, feature_names = extract_features_batch(
         video_paths,
         labels,
@@ -227,7 +220,6 @@ def main():
         cache_file=args.cache_features
     )
     
-    # Print dataset statistics
     logger.info("=" * 80)
     logger.info("DATASET STATISTICS")
     logger.info("=" * 80)
@@ -237,31 +229,26 @@ def main():
     logger.info(f"Feature dimension: {X.shape[1]}")
     logger.info(f"Class balance: {np.sum(y == 1) / len(y) * 100:.1f}% fake")
     
-    # Initialize classifier
     logger.info("=" * 80)
     logger.info("TRAINING CLASSIFIER")
     logger.info("=" * 80)
     classifier = VideoClassifier(config)
     
-    # Cross-validation (optional)
     if not args.skip_cv:
         logger.info(f"Running {args.cv_folds}-fold cross-validation...")
         cv_results = classifier.cross_validate(X, y, cv=args.cv_folds)
         logger.info(f"CV Results:")
         logger.info(f"  Mean AUC: {cv_results['mean_auc']:.4f} ± {cv_results['std_auc']:.4f}")
     
-    # Train final model trên toàn bộ data
     logger.info("Training final model trên toàn bộ dataset...")
     metrics = classifier.train(X, y, feature_names=feature_names)
     
-    # Print metrics
     logger.info("=" * 80)
     logger.info("TRAINING METRICS")
     logger.info("=" * 80)
     for metric_name, value in metrics.items():
         logger.info(f"{metric_name}: {value:.4f}")
     
-    # Feature importance
     logger.info("=" * 80)
     logger.info("TOP 15 FEATURE IMPORTANCE")
     logger.info("=" * 80)
@@ -276,12 +263,10 @@ def main():
         for i, (feat_name, imp) in enumerate(sorted_features, 1):
             logger.info(f"{i:2d}. {feat_name:40s}: {imp:.4f}")
     
-    # Save model
     logger.info("=" * 80)
     ensure_dir(Path(args.output_model).parent)
     classifier.save(args.output_model)
     
-    # Save training summary
     feature_info = feature_extractor.get_feature_info()
     
     summary = {
@@ -311,7 +296,6 @@ def main():
     logger.info("✓ TRAINING HOÀN TẤT!")
     logger.info("=" * 80)
     
-    # Print mode summary
     if use_deep:
         logger.info("\n🚀 Trained in HYBRID mode (Traditional + Deep Learning)")
         logger.info(f"   Deep model: {feature_info.get('deep_model', 'N/A')}")
