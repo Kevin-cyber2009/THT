@@ -3,10 +3,22 @@ import os
 import joblib
 import numpy as np
 
-DEFAULT_PKL_IN   = r"app_pc/models/onestar.pkl"  
-DEFAULT_ONNX_OUT = r"app_pc/models/onestar.onnx"  
+DEFAULT_PKL_IN   = r"app_pc/models/onestar.pkl"
+DEFAULT_ONNX_OUT = r"app_pc/models/onestar.onnx"
 
-def convert(pkl_path: str, onnx_path: str):
+
+def downgrade_onnx_ir(onnx_path: str, target_ir_version: int = 8):
+    """Downgrade ONNX IR version for onnxruntime-android compatibility."""
+    import onnx
+    model = onnx.load(onnx_path)
+    original_ir = model.ir_version
+    model.ir_version = target_ir_version
+    onnx.save(model, onnx_path)
+    print(f"  IR version downgraded: {original_ir} → {target_ir_version}")
+    return model
+
+
+def convert(pkl_path: str, onnx_path: str, target_ir_version: int = 8):
     print("=" * 70)
     print("CONVERT PKL → ONNX + SCALER")
     print("=" * 70)
@@ -20,13 +32,14 @@ def convert(pkl_path: str, onnx_path: str):
     feature_names = data.get('feature_names')
 
     print(f"✅ Model type   : {type(model).__name__}")
-    print(f"✅ Feature names: {feature_names}")
+    print(f"✅ Feature names: {feature_names[:5] if feature_names else None}...")
 
     n_features = scaler.n_features_in_ if hasattr(scaler, 'n_features_in_') else (
         len(feature_names) if feature_names else None
     )
     print(f"✅ n_features    : {n_features}")
 
+    # Build canonical feature names if missing
     if feature_names is None:
         print("⚠️  feature_names không có trong pkl — dùng fallback order")
         traditional = [
@@ -52,6 +65,17 @@ def convert(pkl_path: str, onnx_path: str):
             feature_names = traditional
         print(f"   → Dùng fallback {len(feature_names)} features")
 
+    # Validate feature count
+    if len(feature_names) != n_features:
+        print(f"⚠️  feature_names length {len(feature_names)} != scaler expects {n_features}")
+        print("   Adjusting feature_names to match scaler...")
+        if len(feature_names) < n_features:
+            # Pad with dummy names
+            for i in range(len(feature_names), n_features):
+                feature_names.append(f'feature_{i}')
+        else:
+            feature_names = feature_names[:n_features]
+
     try:
         from onnxmltools import convert_lightgbm
         from onnxmltools.convert.common.data_types import FloatTensorType
@@ -65,27 +89,32 @@ def convert(pkl_path: str, onnx_path: str):
     onnx_model = convert_lightgbm(
         model,
         initial_types=initial_types,
-        target_opset=12
+        target_opset=12  # opset 12 is safe and widely supported
     )
 
     import onnx
     onnx.save(onnx_model, onnx_path)
     print(f"✅ ONNX saved   : {onnx_path}")
 
-    model_stem   = os.path.splitext(os.path.basename(onnx_path))[0]
-    scaler_path  = os.path.join(os.path.dirname(onnx_path), f"{model_stem}_scaler.pkl")
+    # Downgrade IR version for Android compatibility
+    downgrade_onnx_ir(onnx_path, target_ir_version=target_ir_version)
+    print(f"✅ IR version set to {target_ir_version} for onnxruntime-android compatibility")
+
+    # Save scaler separately
+    model_stem  = os.path.splitext(os.path.basename(onnx_path))[0]
+    scaler_path = os.path.join(os.path.dirname(onnx_path), f"{model_stem}_scaler.pkl")
 
     scaler_data = {
         'scaler':        scaler,
         'calibrator':    calibrator,
-        'feature_names': feature_names,   # FIX: lưu đúng thứ tự
+        'feature_names': feature_names,
         'n_features':    n_features,
     }
     joblib.dump(scaler_data, scaler_path)
     print(f"✅ Scaler saved : {scaler_path}")
     print(f"   feature_names ({len(feature_names)}): {feature_names[:5]} ... {feature_names[-3:]}")
 
-    # ── Test ONNX ─────────────────────────────────────────────────────────────
+    # ── Test ONNX inference ─────────────────────────────────────────────────
     print(f"\n🧪 Testing ONNX inference ...")
     import onnxruntime as rt
 
@@ -93,11 +122,23 @@ def convert(pkl_path: str, onnx_path: str):
     dummy  = np.zeros((1, n_features), dtype=np.float32)
     dummy  = scaler.transform(dummy).astype(np.float32)
     output = sess.run(None, {"float_input": dummy})
-    print(f"✅ ONNX output  : label={output[0]}, proba keys={list(output[1][0].keys()) if output[1] else '?'}")
+    label  = output[0][0] if output[0] is not None else "?"
 
-    # ── Test consistency: PC predict vs ONNX predict ─────────────────────────
+    if isinstance(output[1], list) and len(output[1]) > 0:
+        proba_map = output[1][0]
+        proba_str = str({k: f"{v:.4f}" for k, v in proba_map.items()})
+    else:
+        proba_str = str(output[1])
+
+    print(f"✅ ONNX output  : label={label}, proba={proba_str}")
+
+    # ── Test IR version ─────────────────────────────────────────────────────
+    final_model = onnx.load(onnx_path)
+    print(f"✅ Final IR version: {final_model.ir_version}")
+
+    # ── Consistency check ───────────────────────────────────────────────────
     print(f"\n🔁 Consistency check (PC scaler → ONNX) ...")
-    test_input = np.random.rand(5, n_features).astype(np.float32)
+    test_input  = np.random.rand(5, n_features).astype(np.float32)
     test_scaled = scaler.transform(test_input).astype(np.float32)
 
     onnx_labels = []
@@ -105,20 +146,17 @@ def convert(pkl_path: str, onnx_path: str):
         out = sess.run(None, {"float_input": test_scaled[i:i+1]})
         onnx_labels.append(int(out[0][0]))
 
-    # Calibrated prediction từ calibrator (nếu có)
     if calibrator is not None:
-        from sklearn.calibration import CalibratedClassifierCV
         cal_probs = calibrator.predict_proba(test_scaled)[:, 1]
         cal_preds = (cal_probs >= 0.5).astype(int).tolist()
-        matches = sum(a == b for a, b in zip(onnx_labels, cal_preds))
+        matches   = sum(a == b for a, b in zip(onnx_labels, cal_preds))
         print(f"   ONNX labels      : {onnx_labels}")
         print(f"   Calibrated labels: {cal_preds}")
         print(f"   Match: {matches}/5")
         if matches < 4:
-            print("   ⚠️  Nhiều mismatch — ONNX dùng base model, không qua calibrator")
-            print("       Điều này bình thường. ONNX predict raw LightGBM.")
+            print("   ⚠️  Mismatch bình thường — ONNX dùng base LightGBM, Android cũng thế")
     else:
-        print(f"   ONNX labels: {onnx_labels} (không có calibrator để so sánh)")
+        print(f"   ONNX labels: {onnx_labels}")
 
     print("\n" + "=" * 70)
     print("✅ DONE! Copy 2 file sau vào assets/models/ của Android:")
@@ -129,9 +167,11 @@ def convert(pkl_path: str, onnx_path: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default=DEFAULT_PKL_IN,  help="Input .pkl path")
-    parser.add_argument("--out",   default=DEFAULT_ONNX_OUT, help="Output .onnx path")
+    parser.add_argument("--model",      default=DEFAULT_PKL_IN,   help="Input .pkl path")
+    parser.add_argument("--out",        default=DEFAULT_ONNX_OUT,  help="Output .onnx path")
+    parser.add_argument("--ir_version", type=int, default=8,
+                        help="Target ONNX IR version (default: 8)")
     args = parser.parse_args()
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-    convert(args.model, args.out)
+    convert(args.model, args.out, target_ir_version=args.ir_version)
