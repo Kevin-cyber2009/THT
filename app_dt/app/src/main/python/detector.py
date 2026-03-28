@@ -1,10 +1,13 @@
 """
 detector.py — Android Chaquopy bridge for AIChecker.
 
+KEY FIX: Uses manual scaling (mean_/scale_ from JSON) instead of sklearn's
+StandardScaler.transform() to avoid sklearn 1.5.1 vs 1.1.3 version mismatch.
+
 Pipeline:
-  1. Kotlin extracts deep features via ONNX (Kotlin ONNX runtime).
+  1. Kotlin extracts deep features via ONNX.
   2. Python extracts traditional forensic + reality features.
-  3. Python merges both, scales, returns feature vector to Kotlin.
+  3. Python merges both, scales MANUALLY, returns vector to Kotlin.
   4. Kotlin runs the LightGBM ONNX classifier.
 """
 
@@ -15,42 +18,35 @@ import numpy as np
 import types
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  LightGBM stub — ONNX inference runs in Kotlin, not needed in Python
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── LightGBM stub ───────────────────────────────────────────────────────────
 
 class _FakeLGBM:
-    """Placeholder — ONNX inference runs in Kotlin, not needed here."""
-    def __init__(self, **kwargs):      pass
-    def __setstate__(self, s):         self.__dict__.update(s)
-    def predict_proba(self, X):        raise RuntimeError("Use ONNX instead")
-    def predict(self, X):              raise RuntimeError("Use ONNX instead")
+    def __init__(self, **kwargs):   pass
+    def __setstate__(self, s):      self.__dict__.update(s)
+    def predict_proba(self, X):     raise RuntimeError("Use ONNX")
+    def predict(self, X):           raise RuntimeError("Use ONNX")
     @property
-    def feature_importances_(self):    return []
+    def feature_importances_(self): return []
 
 
 class _AutoMock(types.ModuleType):
-    def __getattr__(self, name):
-        return _FakeLGBM
+    def __getattr__(self, name): return _FakeLGBM
 
 
-def _make_lgb_module(name):
+def _make_lgb(name):
     m = _AutoMock(name)
     m.LGBMClassifier = _FakeLGBM
     m.LGBMRegressor  = _FakeLGBM
     m.LGBMRanker     = _FakeLGBM
     m.LGBMModel      = _FakeLGBM
     m.Dataset        = type('Dataset', (), {'__init__': lambda s, *a, **k: None})
-    m.train          = lambda *a, **k: None
-    m.cv             = lambda *a, **k: None
+    m.train = m.cv   = lambda *a, **k: None
     return m
 
 
-for _mod in [
-    'lightgbm', 'lightgbm.sklearn', 'lightgbm.basic', 'lightgbm.compat',
-    'lightgbm.callback', 'lightgbm.engine', 'lightgbm.plotting', 'lightgbm.dask',
-]:
-    sys.modules[_mod] = _make_lgb_module(_mod)
+for _mod in ['lightgbm', 'lightgbm.sklearn', 'lightgbm.basic', 'lightgbm.compat',
+             'lightgbm.callback', 'lightgbm.engine', 'lightgbm.plotting', 'lightgbm.dask']:
+    sys.modules[_mod] = _make_lgb(_mod)
 
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -61,9 +57,7 @@ from src.features import FeatureExtractor
 from src.fusion import ScoreFusion
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Canonical deep feature names — MUST match training order exactly
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── Constants ───────────────────────────────────────────────────────────────
 
 DEEP_FEATURE_NAMES = [
     'deep_feat_mean', 'deep_feat_std', 'deep_feat_max', 'deep_feat_min',
@@ -74,24 +68,35 @@ DEEP_FEATURE_NAMES = [
 ]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Module-level state
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── Module-level state ───────────────────────────────────────────────────────
 
-_scaler        = None
-_feature_names = None   # ordered list from scaler (39 items)
+_scaler_mean   = None   # np.ndarray shape (n_features,)
+_scaler_scale  = None   # np.ndarray shape (n_features,)
+_feature_names = None   # ordered list (39 items)
 _extractor     = None
 _fusion        = None
 _config        = None
-_n_features    = 0      # expected feature vector length (39)
+_n_features    = 0
+_models_dir    = None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  load_models
-# ─────────────────────────────────────────────────────────────────────────────
+def _manual_scale(vector: np.ndarray) -> np.ndarray:
+    """
+    Manual StandardScaler: x_scaled[i] = (x[i] - mean_[i]) / scale_[i]
+    Completely bypasses sklearn version compatibility issues.
+    """
+    if _scaler_mean is None or _scaler_scale is None:
+        raise RuntimeError("Scaler params not loaded")
+    scaled = (vector.astype(np.float64) - _scaler_mean) / _scaler_scale
+    return scaled.astype(np.float32)
+
+
+# ─── load_models ─────────────────────────────────────────────────────────────
 
 def load_models(scaler_path: str, config_path: str) -> str:
-    global _scaler, _feature_names, _extractor, _fusion, _config, _n_features
+    global _scaler_mean, _scaler_scale, _feature_names
+    global _extractor, _fusion, _config, _n_features, _models_dir
+
     try:
         _config = load_config(config_path)
 
@@ -102,65 +107,109 @@ def load_models(scaler_path: str, config_path: str) -> str:
         preproc.setdefault('fps',           6)
         preproc.setdefault('max_frames',    1000)
 
-        # Disable Python-side deep learning (Kotlin handles it)
-        features_config = _config.setdefault('features', {})
-        features_config['use_deep_features'] = False   # ← Kotlin supplies deep features
+        # Disable Python-side deep learning — Kotlin supplies deep features
+        _config.setdefault('features', {})['use_deep_features'] = False
 
-        # Pass models directory so deep_features_onnx can find files if ever needed
-        models_dir = os.path.dirname(os.path.abspath(scaler_path))
-        dl_config  = _config.setdefault('deep_learning', {})
-        dl_config['models_dir'] = models_dir
+        _models_dir = os.path.dirname(os.path.abspath(scaler_path))
+        _config.setdefault('deep_learning', {})['models_dir'] = _models_dir
 
-        print(f"[DEBUG] Models directory: {models_dir}")
+        print(f"[DEBUG] Models directory: {_models_dir}")
 
-        import joblib
-        data = joblib.load(scaler_path)
-
-        if 'scaler' not in data:
-            return 'ERROR: pkl file does not contain key "scaler"'
-
-        _scaler        = data['scaler']
-        _feature_names = data.get('feature_names')
-
-        if hasattr(_scaler, 'n_features_in_'):
-            _n_features = int(_scaler.n_features_in_)
+        # ── Try to load scaler params JSON first (preferred) ──────────────────
+        model_stem   = os.path.splitext(os.path.basename(scaler_path))[0]
+        # Handle "modelname_scaler" → "modelname"
+        if model_stem.endswith('_scaler'):
+            base_stem = model_stem[:-len('_scaler')]
         else:
-            _n_features = int(data.get('n_features', 0))
+            base_stem = model_stem
 
-        # Build extractor (traditional only — deep comes from Kotlin)
-        _extractor_temp  = FeatureExtractor(_config)
-        extractor_names  = _extractor_temp.get_feature_names()
+        params_path = os.path.join(_models_dir, f"{base_stem}_scaler_params.json")
 
-        print(f"[DEBUG] Scaler expects {_n_features} features")
-        print(f"[DEBUG] Scaler feature_names: {_feature_names[:5] if _feature_names else None}...")
-        print(f"[DEBUG] Extractor provides {len(extractor_names)} traditional features")
+        if os.path.exists(params_path):
+            print(f"[DEBUG] Loading scaler params from JSON: {params_path}")
+            with open(params_path, 'r', encoding='utf-8') as f:
+                params = json.load(f)
+
+            _scaler_mean  = np.array(params['mean_'],  dtype=np.float64)
+            _scaler_scale = np.array(params['scale_'], dtype=np.float64)
+            _n_features   = int(params['n_features'])
+            _feature_names = params.get('feature_names')
+
+            print(f"[DEBUG] Loaded JSON scaler params: {_n_features} features")
+            print(f"[DEBUG] Manual scaling: mean[0]={_scaler_mean[0]:.4f}, scale[0]={_scaler_scale[0]:.4f}")
+
+        else:
+            # Fallback: load from pkl (may have version warnings)
+            print(f"[WARNING] scaler_params.json not found at {params_path}")
+            print(f"[WARNING] Falling back to sklearn scaler from pkl")
+            print(f"[WARNING] Run save_scaler_params.py on PC to fix this!")
+
+            import joblib
+            data = joblib.load(scaler_path)
+
+            if 'scaler' not in data:
+                return 'ERROR: pkl has no "scaler" key'
+
+            sklearn_scaler = data['scaler']
+            _feature_names = data.get('feature_names')
+
+            if hasattr(sklearn_scaler, 'n_features_in_'):
+                _n_features = int(sklearn_scaler.n_features_in_)
+            else:
+                _n_features = int(data.get('n_features', 0))
+
+            if hasattr(sklearn_scaler, 'mean_') and hasattr(sklearn_scaler, 'scale_'):
+                _scaler_mean  = sklearn_scaler.mean_.astype(np.float64)
+                _scaler_scale = sklearn_scaler.scale_.astype(np.float64)
+                print(f"[DEBUG] Extracted scaler params from pkl: {_n_features} features")
+            else:
+                return 'ERROR: Scaler not fitted (no mean_/scale_ attributes)'
+
+        # Validate
+        if _scaler_mean is None or len(_scaler_mean) != _n_features:
+            return f'ERROR: Scaler mean_ length {len(_scaler_mean) if _scaler_mean is not None else 0} != n_features {_n_features}'
+        if _scaler_scale is None or len(_scaler_scale) != _n_features:
+            return f'ERROR: Scaler scale_ length {len(_scaler_scale) if _scaler_scale is not None else 0} != n_features {_n_features}'
+
+        # Zero scale guard (would cause division by zero)
+        zero_mask = _scaler_scale == 0
+        if np.any(zero_mask):
+            n_zero = np.sum(zero_mask)
+            print(f"[WARNING] {n_zero} features have scale=0, replacing with 1.0")
+            _scaler_scale = _scaler_scale.copy()
+            _scaler_scale[zero_mask] = 1.0
+
+        # NaN/Inf guard
+        _scaler_mean  = np.nan_to_num(_scaler_mean,  nan=0.0, posinf=0.0, neginf=0.0)
+        _scaler_scale = np.nan_to_num(_scaler_scale, nan=1.0, posinf=1.0, neginf=1.0)
+
+        # ── Build feature names ────────────────────────────────────────────────
+        _extractor_temp = FeatureExtractor(_config)
+        extractor_names = _extractor_temp.get_feature_names()
 
         if _feature_names is not None and len(_feature_names) == _n_features:
-            print(f"[DEBUG] Using feature_names from scaler ({len(_feature_names)} features)")
-            missing_in_extractor = [n for n in _feature_names if n not in extractor_names]
-            if missing_in_extractor:
-                print(f"[INFO] Features supplied by Kotlin ONNX: {missing_in_extractor}")
+            print(f"[DEBUG] Using feature_names ({len(_feature_names)} features)")
+            deep_missing = [n for n in _feature_names if n not in extractor_names]
+            if deep_missing:
+                print(f"[INFO] Kotlin supplies: {deep_missing}")
         else:
-            print(f"[WARNING] Scaler feature_names invalid, rebuilding from extractor + deep names")
-            traditional_names = extractor_names  # 28 names
+            print(f"[WARNING] Rebuilding feature_names from extractor + deep names")
+            traditional_names = extractor_names  # 28
             all_names = traditional_names + DEEP_FEATURE_NAMES
             if len(all_names) == _n_features:
                 _feature_names = all_names
             elif _n_features == 28:
                 _feature_names = traditional_names
             else:
-                return (f'ERROR: Feature count mismatch: '
-                        f'extractor={len(extractor_names)}, deep={len(DEEP_FEATURE_NAMES)}, '
+                return (f'ERROR: Cannot build feature_names: '
+                        f'trad={len(traditional_names)}, deep={len(DEEP_FEATURE_NAMES)}, '
                         f'scaler expects={_n_features}')
 
         _extractor = FeatureExtractor(_config)
         _fusion    = ScoreFusion(_config)
 
-        final_names = _extractor.get_feature_names()
-        deep_count  = sum(1 for n in _feature_names if n in DEEP_FEATURE_NAMES)
-        print(f"[DEBUG] Traditional extractor: {len(final_names)} features")
-        print(f"[DEBUG] Total expected: {_n_features} ({_n_features - deep_count} trad + {deep_count} deep)")
-
+        deep_n = sum(1 for n in _feature_names if n in DEEP_FEATURE_NAMES)
+        print(f"[DEBUG] Ready: {_n_features} features ({_n_features - deep_n} trad + {deep_n} deep)")
         return 'OK'
 
     except Exception as e:
@@ -168,127 +217,105 @@ def load_models(scaler_path: str, config_path: str) -> str:
         return f'ERROR: {e}\n{traceback.format_exc()}'
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  extract_features
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── extract_features ─────────────────────────────────────────────────────────
 
 def extract_features(video_path: str, deep_features_json: str = "") -> str:
     """
-    Extract traditional features from video, merge pre-computed deep features
-    from Kotlin ONNX runtime, apply scaler, return feature vector + fusion scores.
-
-    Args:
-        video_path:          Path to the video file.
-        deep_features_json:  JSON string {"deep_feat_mean": 0.123, ...} from Kotlin.
-                             If "{}" or empty, deep features default to 0.0.
+    Extract traditional features, merge Kotlin deep features, scale MANUALLY, return vector.
     """
-    if _scaler is None or _extractor is None:
-        return json.dumps({'error': 'Model not loaded — call load_models() first'})
+    if _scaler_mean is None or _extractor is None:
+        return json.dumps({'error': 'Model not loaded'})
 
     try:
-        # ── Step 1: Traditional forensic + reality features ───────────────────
+        # ── Step 1: Traditional features ──────────────────────────────────────
         features, metadata = _extractor.extract_from_video(video_path)
-        print(f"[DEBUG] Extracted {len(features)} traditional features")
+        print(f"[DEBUG] Traditional features: {len(features)}")
 
         # ── Step 2: Merge Kotlin deep features ───────────────────────────────
-        deep_feat_count  = 0
-        deep_feats_valid = False
+        deep_count  = 0
+        deep_valid  = False
 
-        if deep_features_json and deep_features_json.strip() not in ('', '{}', 'null', 'None'):
+        raw_json = (deep_features_json or "").strip()
+        if raw_json and raw_json not in ('{}', 'null', 'None'):
             try:
-                deep_feats = json.loads(deep_features_json)
+                deep_feats = json.loads(raw_json)
                 if isinstance(deep_feats, dict) and len(deep_feats) > 0:
-                    # Validate: only accept known deep_* keys
                     valid_deep = {
                         k: float(v)
                         for k, v in deep_feats.items()
-                        if k in DEEP_FEATURE_NAMES and v is not None
+                        if k in DEEP_FEATURE_NAMES
+                           and v is not None
+                           and not (isinstance(v, float) and (np.isnan(v) or np.isinf(v)))
                     }
-
-                    # Check they're not all zero (zeros mean extraction failed)
                     all_zero = all(abs(v) < 1e-10 for v in valid_deep.values())
                     if all_zero:
-                        print("[WARNING] Deep features from Kotlin are ALL ZERO — ignoring")
-                        print("[WARNING] This means ONNX IR version mismatch. Re-export ONNX models!")
-                        # Fill with zeros explicitly so scaler can still work
-                        for name in DEEP_FEATURE_NAMES:
-                            features[name] = 0.0
-                        deep_feat_count = len(DEEP_FEATURE_NAMES)
+                        print("[WARNING] Deep features from Kotlin all=0 — ONNX extraction failed")
                     else:
                         features.update(valid_deep)
-                        # Fill any missing deep features with 0
-                        for name in DEEP_FEATURE_NAMES:
-                            if name not in features:
-                                features[name] = 0.0
-                        deep_feat_count  = len(valid_deep)
-                        deep_feats_valid = True
-                        print(f"[DEBUG] Merged {deep_feat_count} valid deep features from Kotlin")
-                        print(f"[DEBUG] Sample: mean={valid_deep.get('deep_feat_mean', 0):.4f}, "
-                              f"std={valid_deep.get('deep_feat_std', 0):.4f}")
+                        deep_valid = True
+                        deep_count = len(valid_deep)
+                        print(f"[DEBUG] Merged {deep_count} deep features: "
+                              f"mean={valid_deep.get('deep_feat_mean', 0):.4f}")
             except Exception as e:
-                print(f"[WARNING] Failed to parse deep_features_json: {e}")
-                for name in DEEP_FEATURE_NAMES:
-                    features[name] = 0.0
-                deep_feat_count = len(DEEP_FEATURE_NAMES)
-        else:
-            print("[DEBUG] No deep features from Kotlin — setting all deep_* to 0.0")
-            print("[WARNING] ⚠ Deep features = 0. Accuracy will differ from PC app!")
-            print("[WARNING]   Fix: re-export ONNX with export_deep_features_onnx.py (opset=11)")
-            for name in DEEP_FEATURE_NAMES:
+                print(f"[WARNING] Parse deep_features_json: {e}")
+
+        # Ensure all deep feature slots exist (0.0 if not provided)
+        for name in DEEP_FEATURE_NAMES:
+            if name not in features:
                 features[name] = 0.0
-            deep_feat_count = len(DEEP_FEATURE_NAMES)
 
-        print(f"[DEBUG] Total features after merge: {len(features)}")
+        if not deep_valid:
+            print("[WARNING] ⚠ Deep features not available — accuracy may differ from PC")
 
-        # ── Step 3: Build feature vector in EXACT order of _feature_names ─────
-        vector           = []
-        missing_features = []
+        # ── Step 3: Build feature vector ─────────────────────────────────────
+        vector   = []
+        missing  = []
 
         for name in _feature_names:
-            value = features.get(name, None)
-            if value is None:
-                missing_features.append(name)
-                value = 0.0
-            if np.isnan(value) or np.isinf(value):
-                value = 0.0
-            vector.append(float(value))
+            val = features.get(name, None)
+            if val is None:
+                missing.append(name)
+                val = 0.0
+            if isinstance(val, float) and (np.isnan(val) or np.isinf(val)):
+                val = 0.0
+            vector.append(float(val))
 
-        if missing_features:
-            print(f"[WARNING] Missing features ({len(missing_features)}): {missing_features}")
+        if missing:
+            print(f"[WARNING] Missing features ({len(missing)}): {missing}")
 
         vector = np.array(vector, dtype=np.float64)
 
-        # Ensure correct length
-        if len(vector) != _n_features:
-            print(f"[ERROR] Vector length mismatch: {len(vector)} vs expected {_n_features}")
-            if len(vector) < _n_features:
-                vector = np.concatenate([
-                    vector,
-                    np.zeros(_n_features - len(vector), dtype=np.float64)
-                ])
-            else:
-                vector = vector[:_n_features]
+        # Pad or trim to exact expected length
+        if len(vector) < _n_features:
+            vector = np.concatenate([vector, np.zeros(_n_features - len(vector))])
+        elif len(vector) > _n_features:
+            vector = vector[:_n_features]
 
-        print(f"[DEBUG] Feature vector shape: {vector.shape}")
-        print(f"[DEBUG] Stats: mean={np.mean(vector):.4f}, std={np.std(vector):.4f}")
+        print(f"[DEBUG] Raw vector: shape={vector.shape}, "
+              f"mean={np.mean(vector):.4f}, std={np.std(vector):.4f}")
 
-        # ── Step 4: Apply scaler ───────────────────────────────────────────────
-        try:
-            scaled = _scaler.transform(vector.reshape(1, -1))
-            print(f"[DEBUG] Scaled stats: mean={np.mean(scaled):.4f}, std={np.std(scaled):.4f}")
-        except Exception as e:
-            print(f"[ERROR] Scaler transform failed: {e}")
-            return json.dumps({'error': f'Scaler transform failed: {e}'})
+        # ── Step 4: MANUAL scaling (bypasses sklearn version issue) ───────────
+        scaled = _manual_scale(vector)
+
+        # Clamp extreme values (prevents NaN/Inf after scaling)
+        scaled = np.clip(scaled, -10.0, 10.0)
+        scaled = np.nan_to_num(scaled, nan=0.0, posinf=0.0, neginf=0.0)
+
+        print(f"[DEBUG] Scaled vector: mean={np.mean(scaled):.4f}, std={np.std(scaled):.4f}")
+        print(f"[DEBUG] Scaled first 5: {[f'{v:.4f}' for v in scaled[:5]]}")
+
+        # Sanity check: all-zero scaled vector = something is wrong
+        if np.all(np.abs(scaled) < 1e-6):
+            print("[ERROR] Scaled vector is ALL ZERO — check scaler params!")
 
         vector_list = scaled.flatten().tolist()
 
-        # ── Step 5: Compute fusion scores ──────────────────────────────────────
+        # ── Step 5: Fusion scores ─────────────────────────────────────────────
         artifact = _fusion.compute_artifact_score(features)
         reality  = _fusion.compute_reality_score(features)
         fusion   = _fusion.fuse_scores(artifact, reality, 0.5)
         explain  = _fusion.generate_explanation(features, fusion)
 
-        # ── Build result ───────────────────────────────────────────────────────
         result = {
             'vector':            vector_list,
             'fusion_artifact':   float(artifact),
@@ -298,16 +325,17 @@ def extract_features(video_path: str, deep_features_json: str = "") -> str:
             'feature_dim':       len(vector_list),
             'debug_info': {
                 'n_features_expected':    _n_features,
-                'n_traditional_features': len(features) - deep_feat_count,
-                'n_deep_features':        deep_feat_count,
-                'deep_features_valid':    deep_feats_valid,
-                'n_missing_features':     len(missing_features),
-                'missing_features':       missing_features,
+                'n_deep_features':        deep_count,
+                'deep_features_valid':    deep_valid,
+                'n_missing':              len(missing),
+                'missing':                missing,
+                'scaled_mean':            float(np.mean(scaled)),
+                'scaled_std':             float(np.std(scaled)),
             }
         }
 
-        print(f"[DEBUG] Result: artifact={artifact:.4f}, reality={reality:.4f}, "
-              f"confidence={fusion['confidence']}, deep_valid={deep_feats_valid}")
+        print(f"[DEBUG] artifact={artifact:.4f}, reality={reality:.4f}, "
+              f"conf={fusion['confidence']}, deep_valid={deep_valid}")
 
         return json.dumps(result)
 
@@ -317,5 +345,4 @@ def extract_features(video_path: str, deep_features_json: str = "") -> str:
 
 
 def analyze_video(video_path: str) -> str:
-    """Deprecated — use extract_features() instead."""
-    return json.dumps({'error': 'Use extract_features() instead'})
+    return json.dumps({'error': 'Deprecated — use extract_features()'})

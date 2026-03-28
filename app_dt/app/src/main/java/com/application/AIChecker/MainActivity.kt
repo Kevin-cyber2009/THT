@@ -40,32 +40,26 @@ class MainActivity : AppCompatActivity() {
     private var selectedPath  : String? = null
     private val tempFiles     = mutableListOf<File>()
 
-    private var ortEnv          : OrtEnvironment? = null
-    private var ortSession      : OrtSession?     = null
-
-    // Deep feature ONNX models
-    private var resnet50Session     : OrtSession? = null
-    private var efficientnetSession : OrtSession? = null
-    private var deepModelsLoaded    : Int = 0  // how many deep models loaded successfully
+    private var ortEnv           : OrtEnvironment? = null
+    private var ortSession       : OrtSession?     = null
+    private var resnet50Session  : OrtSession?     = null
+    private var efficientnetSess : OrtSession?     = null
+    private var deepModelsLoaded : Int = 0
 
     companion object {
         private const val REQ_PICK_VIDEO = 1001
         private var activeModel = "x.onnx"
-        private const val TAG = "AIChecker"
+        private const val TAG   = "AIChecker"
 
         private val DEEP_FEATURE_MODELS = listOf(
             "resnet50_features.onnx",
             "efficientnet_b0_features.onnx"
         )
 
-        // ImageNet normalization constants
         private val IMAGENET_MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
         private val IMAGENET_STD  = floatArrayOf(0.229f, 0.224f, 0.225f)
-
-        // Number of frames to sample for deep feature extraction
         private const val DEEP_SAMPLE_FRAMES = 10
 
-        // Expected deep feature names in exact order (must match training)
         private val DEEP_FEATURE_NAMES = listOf(
             "deep_feat_mean", "deep_feat_std", "deep_feat_max", "deep_feat_min",
             "deep_temporal_var_mean", "deep_temporal_var_std",
@@ -75,8 +69,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  Available model listing
-    // ─────────────────────────────────────────────────────────────────────────
 
     private fun getAvailableModels(): Array<String> {
         return try {
@@ -85,14 +77,8 @@ class MainActivity : AppCompatActivity() {
                 ?.sorted()
                 ?.toTypedArray()
                 ?: arrayOf("x.onnx")
-        } catch (e: Exception) {
-            arrayOf("x.onnx")
-        }
+        } catch (e: Exception) { arrayOf("x.onnx") }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    //  Lifecycle
-    // ─────────────────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,7 +96,7 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         ortSession?.close()
         resnet50Session?.close()
-        efficientnetSession?.close()
+        efficientnetSess?.close()
         ortEnv?.close()
         tempFiles.forEach { if (it.exists()) it.delete() }
         tempFiles.clear()
@@ -121,10 +107,6 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == REQ_PICK_VIDEO && resultCode == Activity.RESULT_OK)
             data?.data?.let { handlePickedVideo(it) }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    //  UI Setup
-    // ─────────────────────────────────────────────────────────────────────────
 
     private fun setupUI() {
         setControlsEnabled(false)
@@ -164,23 +146,21 @@ class MainActivity : AppCompatActivity() {
     private fun loadModels(modelName: String) {
         isModelLoaded = false
         setControlsEnabled(false)
-        binding.tvStatus.text = "Loading model: $modelName ..."
+        binding.tvStatus.text = "Loading: $modelName ..."
         setBadge("* LOADING", R.color.warning)
 
         executor.execute {
             try {
                 val configFile = copyAsset("config.yaml")
-
                 val scalerName = modelName.removeSuffix(".onnx") + "_scaler.pkl"
 
                 val scalerExists = try {
-                    assets.open("models/$scalerName").close()
-                    true
+                    assets.open("models/$scalerName").close(); true
                 } catch (e: Exception) { false }
 
                 if (!scalerExists) {
                     mainHandler.post {
-                        binding.tvStatus.text = "Thieu file: models/$scalerName"
+                        binding.tvStatus.text = "Missing: models/$scalerName"
                         setBadge("!! ERROR", R.color.danger)
                     }
                     return@execute
@@ -188,305 +168,199 @@ class MainActivity : AppCompatActivity() {
 
                 val scalerFile = copyAsset("models/$scalerName")
 
-                // Copy deep feature ONNX models to filesDir
-                for (deepModelFile in DEEP_FEATURE_MODELS) {
-                    try {
-                        assets.open("models/$deepModelFile").close()
-                        copyAsset("models/$deepModelFile")
-                        Log.d(TAG, "Copied deep feature model: $deepModelFile")
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Deep feature model not found in assets: $deepModelFile — skipping")
-                    }
+                // Also copy scaler_params.json if present (preferred for Android)
+                val paramsName = modelName.removeSuffix(".onnx") + "_scaler_params.json"
+                try {
+                    assets.open("models/$paramsName").close()
+                    copyAsset("models/$paramsName")
+                    Log.d(TAG, "✓ Copied $paramsName (manual scaling mode)")
+                } catch (e: Exception) {
+                    Log.w(TAG, "No $paramsName found — falling back to sklearn scaler")
+                    Log.w(TAG, "Run save_scaler_params.py on PC to fix sklearn version mismatch!")
                 }
 
-                // Load deep feature ONNX sessions in Kotlin
+                // Copy deep feature ONNX models
+                for (f in DEEP_FEATURE_MODELS) {
+                    try { assets.open("models/$f").close(); copyAsset("models/$f"); Log.d(TAG, "Copied $f") }
+                    catch (_: Exception) { Log.w(TAG, "Deep model not in assets: $f") }
+                }
+
                 loadDeepFeatureModels()
 
-                // Load Python detector (traditional features + scaler)
                 val result = Python.getInstance()
                     .getModule("detector")
-                    .callAttr("load_models",
-                        scalerFile.absolutePath,
-                        configFile.absolutePath)
+                    .callAttr("load_models", scalerFile.absolutePath, configFile.absolutePath)
                     .toString()
 
-                Log.d(TAG, "load_models result: $result")
+                Log.d(TAG, "load_models: $result")
 
                 if (result != "OK") {
-                    mainHandler.post {
-                        binding.tvStatus.text = result
-                        setBadge("!! ERROR", R.color.danger)
-                    }
+                    mainHandler.post { binding.tvStatus.text = result; setBadge("!! ERROR", R.color.danger) }
                     return@execute
                 }
 
-                // Load classifier ONNX model
                 val onnxFile = copyAsset("models/$modelName")
                 val env      = ortEnv ?: OrtEnvironment.getEnvironment().also { ortEnv = it }
                 ortSession?.close()
                 ortSession = env.createSession(onnxFile.absolutePath)
 
-                Log.d(TAG, "Classifier loaded. Deep models: $deepModelsLoaded / ${DEEP_FEATURE_MODELS.size}")
-
                 mainHandler.post {
                     isModelLoaded            = true
                     activeModel              = modelName
                     binding.tvModelName.text = modelName
-                    val deepStatus = if (deepModelsLoaded > 0)
-                        "deep=$deepModelsLoaded ✓"
-                    else
-                        "deep=0 ⚠ (re-export ONNX needed)"
-                    binding.tvStatus.text    = "Ready ($deepStatus) - select a file or paste a URL."
+                    val deepStatus = if (deepModelsLoaded > 0) "deep=$deepModelsLoaded ✓" else "deep=0 ⚠"
+                    binding.tvStatus.text    = "Ready ($deepStatus) - select a file or URL."
                     setBadge("* READY", R.color.success)
                     setControlsEnabled(true)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Load models failed", e)
-                mainHandler.post {
-                    binding.tvStatus.text = "Load failed: ${e.message}"
-                    setBadge("!! ERROR", R.color.danger)
-                }
+                Log.e(TAG, "loadModels failed", e)
+                mainHandler.post { binding.tvStatus.text = "Load failed: ${e.message}"; setBadge("!! ERROR", R.color.danger) }
             }
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    //  Deep Feature Model Loading (Kotlin ONNX sessions)
-    // ─────────────────────────────────────────────────────────────────────────
-
     private fun loadDeepFeatureModels() {
         val env = ortEnv ?: return
-
-        resnet50Session?.close()
-        resnet50Session = null
-        efficientnetSession?.close()
-        efficientnetSession = null
+        resnet50Session?.close();  resnet50Session  = null
+        efficientnetSess?.close(); efficientnetSess = null
         deepModelsLoaded = 0
 
-        // Try resnet50
-        try {
-            val f = File(filesDir, "models/resnet50_features.onnx")
-            if (f.exists()) {
-                resnet50Session = env.createSession(f.absolutePath)
+        for ((name, setter) in listOf(
+            "resnet50_features.onnx"       to { s: OrtSession -> resnet50Session  = s },
+            "efficientnet_b0_features.onnx" to { s: OrtSession -> efficientnetSess = s }
+        )) {
+            val f = File(filesDir, "models/$name")
+            if (!f.exists()) { Log.w(TAG, "$name not in filesDir"); continue }
+            try {
+                setter(env.createSession(f.absolutePath))
                 deepModelsLoaded++
-                Log.d(TAG, "✓ Loaded resnet50_features.onnx (Kotlin ONNX)")
-            } else {
-                Log.w(TAG, "resnet50_features.onnx not found in filesDir")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load resnet50: ${e.message}")
-            // Check if it's an IR version issue
-            if (e.message?.contains("Unsupported model IR version") == true ||
-                e.message?.contains("IR version") == true) {
-                Log.e(TAG, "❌ IR version incompatible! Re-export ONNX with export_deep_features_onnx.py")
-                Log.e(TAG, "   Then rebuild the app. Error: ${e.message}")
+                Log.d(TAG, "✓ Loaded $name")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load $name: ${e.message}")
+                if (e.message?.contains("IR version", ignoreCase = true) == true) {
+                    Log.e(TAG, "→ Re-export ONNX with export_deep_features_onnx.py (opset=11)")
+                }
             }
         }
-
-        // Try efficientnet
-        try {
-            val f = File(filesDir, "models/efficientnet_b0_features.onnx")
-            if (f.exists()) {
-                efficientnetSession = env.createSession(f.absolutePath)
-                deepModelsLoaded++
-                Log.d(TAG, "✓ Loaded efficientnet_b0_features.onnx (Kotlin ONNX)")
-            } else {
-                Log.w(TAG, "efficientnet_b0_features.onnx not found in filesDir")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load efficientnet: ${e.message}")
-            if (e.message?.contains("Unsupported model IR version") == true ||
-                e.message?.contains("IR version") == true) {
-                Log.e(TAG, "❌ IR version incompatible! Re-export ONNX with export_deep_features_onnx.py")
-            }
-        }
-
         Log.d(TAG, "Deep models loaded: $deepModelsLoaded / ${DEEP_FEATURE_MODELS.size}")
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  Deep Feature Extraction (Kotlin ONNX runtime)
+    //  Deep Feature Extraction
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Extract video frames using MediaMetadataRetriever.
-     * Returns preprocessed FloatArrays (CHW, ImageNet normalized) for ONNX input.
-     */
     private fun extractVideoFrames(videoPath: String): List<FloatArray> {
-        val frames = mutableListOf<FloatArray>()
+        val frames    = mutableListOf<FloatArray>()
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(videoPath)
-            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            val durationMs  = durationStr?.toLongOrNull() ?: return frames
+            val durationMs = retriever
+                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: return frames
             if (durationMs <= 0) return frames
 
             for (i in 0 until DEEP_SAMPLE_FRAMES) {
-                val fraction = if (DEEP_SAMPLE_FRAMES > 1) i.toDouble() / (DEEP_SAMPLE_FRAMES - 1) else 0.5
-                val timeUs   = (fraction * durationMs * 1000L).toLong()
-                    .coerceIn(0L, (durationMs - 1) * 1000L)
-
+                val frac   = if (DEEP_SAMPLE_FRAMES > 1) i.toDouble() / (DEEP_SAMPLE_FRAMES - 1) else 0.5
+                val timeUs = (frac * durationMs * 1000L).toLong().coerceIn(0L, (durationMs - 1) * 1000L)
                 try {
-                    val bitmap = retriever.getFrameAtTime(
-                        timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-                    )
-                    if (bitmap != null) {
-                        frames.add(preprocessBitmapForOnnx(bitmap))
-                        bitmap.recycle()
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Frame $i extraction failed: ${e.message}")
-                }
+                    val bmp = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    if (bmp != null) { frames.add(preprocessBitmap(bmp)); bmp.recycle() }
+                } catch (e: Exception) { Log.w(TAG, "Frame $i failed: ${e.message}") }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "extractVideoFrames failed: ${e.message}")
-        } finally {
-            try { retriever.release() } catch (_: Exception) {}
-        }
-        Log.d(TAG, "Extracted ${frames.size} frames for deep features")
+        } catch (e: Exception) { Log.e(TAG, "extractFrames: ${e.message}") }
+        finally { try { retriever.release() } catch (_: Exception) {} }
+        Log.d(TAG, "Extracted ${frames.size} frames")
         return frames
     }
 
-    /**
-     * Resize bitmap to 256×256, center-crop to 224×224, normalize with ImageNet stats.
-     * Returns FloatArray in CHW format (3 × 224 × 224).
-     */
-    private fun preprocessBitmapForOnnx(src: Bitmap): FloatArray {
+    private fun preprocessBitmap(src: Bitmap): FloatArray {
         val resized = Bitmap.createScaledBitmap(src, 256, 256, true)
-        val cropped = Bitmap.createBitmap(resized, 16, 16, 224, 224)  // center crop
+        val cropped = Bitmap.createBitmap(resized, 16, 16, 224, 224)
         if (resized !== src) resized.recycle()
-
         val pixels = IntArray(224 * 224)
         cropped.getPixels(pixels, 0, 224, 0, 0, 224, 224)
         cropped.recycle()
-
-        val tensor = FloatArray(3 * 224 * 224)
+        val t = FloatArray(3 * 224 * 224)
         for (i in pixels.indices) {
             val p = pixels[i]
-            tensor[i]                 = ((p shr 16 and 0xFF) / 255f - IMAGENET_MEAN[0]) / IMAGENET_STD[0]
-            tensor[224 * 224 + i]     = ((p shr 8  and 0xFF) / 255f - IMAGENET_MEAN[1]) / IMAGENET_STD[1]
-            tensor[2 * 224 * 224 + i] = ((p         and 0xFF) / 255f - IMAGENET_MEAN[2]) / IMAGENET_STD[2]
+            t[i]                 = ((p shr 16 and 0xFF) / 255f - IMAGENET_MEAN[0]) / IMAGENET_STD[0]
+            t[224 * 224 + i]     = ((p shr 8  and 0xFF) / 255f - IMAGENET_MEAN[1]) / IMAGENET_STD[1]
+            t[2 * 224 * 224 + i] = ((p         and 0xFF) / 255f - IMAGENET_MEAN[2]) / IMAGENET_STD[2]
         }
-        return tensor
+        return t
     }
 
-    /**
-     * Run one frame through an ONNX feature-extraction model.
-     * Handles both [1, D] and [1, D, 1, 1] output shapes (ResNet vs EfficientNet).
-     */
-    private fun runDeepModelOnFrame(session: OrtSession, frameData: FloatArray): FloatArray? {
+    private fun runDeepModel(session: OrtSession, frameData: FloatArray): FloatArray? {
         return try {
             val env = ortEnv ?: return null
             val tensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(frameData), longArrayOf(1, 3, 224, 224))
             tensor.use {
                 val out = session.run(mapOf(session.inputNames.first() to it))
-                out.use { flattenOnnxOutput(out[0].value) }
+                out.use { flattenOutput(out[0].value) }
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Deep ONNX inference failed: ${e.message}")
-            null
-        }
+        } catch (e: Exception) { Log.w(TAG, "Deep inference: ${e.message}"); null }
     }
 
-    /** Recursively flatten any nested float array from ONNX output into FloatArray. */
     @Suppress("UNCHECKED_CAST")
-    private fun flattenOnnxOutput(value: Any?): FloatArray? {
+    private fun flattenOutput(value: Any?): FloatArray? {
         return when (value) {
-            is FloatArray -> value
-            is Array<*>  -> {
-                val buf = mutableListOf<Float>()
-                flattenInto(value, buf)
-                buf.toFloatArray()
-            }
-            else -> null
+            is FloatArray  -> value
+            is Array<*>   -> { val buf = mutableListOf<Float>(); flattenInto(value, buf); buf.toFloatArray() }
+            else           -> null
         }
     }
 
     @Suppress("UNCHECKED_CAST")
     private fun flattenInto(arr: Array<*>, buf: MutableList<Float>) {
-        for (item in arr) {
-            when (item) {
-                is Float       -> buf.add(item)
-                is Double      -> buf.add(item.toFloat())
-                is FloatArray  -> item.forEach { buf.add(it) }
-                is DoubleArray -> item.forEach { buf.add(it.toFloat()) }
-                is Array<*>    -> flattenInto(item, buf)
-            }
+        for (item in arr) when (item) {
+            is Float       -> buf.add(item)
+            is Double      -> buf.add(item.toFloat())
+            is FloatArray  -> item.forEach { buf.add(it) }
+            is DoubleArray -> item.forEach { buf.add(it.toFloat()) }
+            is Array<*>    -> flattenInto(item, buf)
         }
     }
 
-    /**
-     * Compute the 11 canonical deep_* statistics from a list of per-frame feature vectors.
-     * Matches exactly what the Python DeepFeatureExtractor computes.
-     */
-    private fun computeDeepStats(allFrameFeatures: List<FloatArray>): Map<String, Float> {
-        val n = allFrameFeatures.size
+    private fun computeDeepStats(allFeatures: List<FloatArray>): Map<String, Float> {
+        val n = allFeatures.size
         if (n == 0) return emptyMap()
-        val dim = allFrameFeatures[0].size
+        val dim = allFeatures[0].size
         if (dim == 0) return emptyMap()
 
-        // ── Global stats across all elements ──────────────────────────────────
-        var sumAll   = 0.0
-        var sumSqAll = 0.0
-        var maxAll   = Float.NEGATIVE_INFINITY
-        var minAll   = Float.POSITIVE_INFINITY
-        var total    = 0
-        var sparse   = 0
+        var sumAll = 0.0; var sumSqAll = 0.0
+        var maxAll = Float.NEGATIVE_INFINITY; var minAll = Float.POSITIVE_INFINITY
+        var total = 0; var sparse = 0
 
-        for (feat in allFrameFeatures) {
-            for (v in feat) {
-                sumAll   += v
-                sumSqAll += v.toDouble() * v
-                if (v > maxAll) maxAll = v
-                if (v < minAll) minAll = v
-                if (abs(v) < 0.01f) sparse++
-                total++
-            }
+        for (feat in allFeatures) for (v in feat) {
+            sumAll += v; sumSqAll += v.toDouble() * v
+            if (v > maxAll) maxAll = v; if (v < minAll) minAll = v
+            if (abs(v) < 0.01f) sparse++; total++
         }
 
-        val gMean     = (sumAll / total).toFloat()
-        val gVariance = (sumSqAll / total - gMean.toDouble() * gMean).coerceAtLeast(0.0)
-        val gStd      = sqrt(gVariance).toFloat()
+        val gMean = (sumAll / total).toFloat()
+        val gStd  = sqrt((sumSqAll / total - gMean.toDouble() * gMean).coerceAtLeast(0.0)).toFloat()
 
-        // ── Temporal variance: var across time for each feature dimension ─────
-        val tempVarArr = DoubleArray(dim)
-        for (d in 0 until dim) {
-            val colMean = allFrameFeatures.sumOf { it[d].toDouble() } / n
-            tempVarArr[d] = allFrameFeatures.sumOf { feat ->
-                val diff = feat[d].toDouble() - colMean
-                diff * diff
-            } / n
+        val tvArr = DoubleArray(dim) { d ->
+            val m = allFeatures.sumOf { it[d].toDouble() } / n
+            allFeatures.sumOf { val diff = it[d] - m; diff * diff } / n
         }
-        val tvMean   = tempVarArr.average().toFloat()
-        val tvMeanSq = tempVarArr.map { it * it }.average()
-        val tvStd    = sqrt((tvMeanSq - tvMean.toDouble() * tvMean).coerceAtLeast(0.0)).toFloat()
+        val tvMean = tvArr.average().toFloat()
+        val tvStd  = sqrt((tvArr.map { it * it }.average() - tvMean.toDouble() * tvMean).coerceAtLeast(0.0)).toFloat()
 
-        // ── L2 norms per frame ────────────────────────────────────────────────
-        val l2Arr  = DoubleArray(n) { i -> sqrt(allFrameFeatures[i].sumOf { v -> v.toDouble() * v }) }
-        val l2Mean = l2Arr.average().toFloat()
-        val l2MSq  = l2Arr.map { it * it }.average()
-        val l2Std  = sqrt((l2MSq - l2Mean.toDouble() * l2Mean).coerceAtLeast(0.0)).toFloat()
+        val l2 = DoubleArray(n) { i -> sqrt(allFeatures[i].sumOf { v -> v.toDouble() * v }) }
+        val l2Mean = l2.average().toFloat()
+        val l2Std  = sqrt((l2.map { it * it }.average() - l2Mean.toDouble() * l2Mean).coerceAtLeast(0.0)).toFloat()
 
-        // ── Cosine similarity between consecutive frames ───────────────────────
-        val sims = mutableListOf<Double>()
-        for (i in 0 until n - 1) {
-            val a = allFrameFeatures[i]
-            val b = allFrameFeatures[i + 1]
-            var dot = 0.0; var normA = 0.0; var normB = 0.0
-            for (d in 0 until dim) {
-                dot  += a[d].toDouble() * b[d]
-                normA += a[d].toDouble() * a[d]
-                normB += b[d].toDouble() * b[d]
-            }
-            sims.add(dot / (sqrt(normA) * sqrt(normB) + 1e-10))
+        val sims = (0 until n - 1).map { i ->
+            val a = allFeatures[i]; val b = allFeatures[i + 1]
+            var dot = 0.0; var nA = 0.0; var nB = 0.0
+            for (d in 0 until dim) { dot += a[d] * b[d]; nA += a[d] * a[d]; nB += b[d] * b[d] }
+            dot / (sqrt(nA) * sqrt(nB) + 1e-10)
         }
         val simMean = if (sims.isEmpty()) 0f else sims.average().toFloat()
-        val simStd  = if (sims.size < 2) 0f else {
-            val simMSq = sims.map { it * it }.average()
-            sqrt((simMSq - simMean.toDouble() * simMean).coerceAtLeast(0.0)).toFloat()
-        }
-
-        val sparsity = sparse.toFloat() / total
+        val simStd  = if (sims.size < 2) 0f else
+            sqrt((sims.map { it * it }.average() - simMean.toDouble() * simMean).coerceAtLeast(0.0)).toFloat()
 
         return mapOf(
             "deep_feat_mean"         to gMean,
@@ -499,98 +373,62 @@ class MainActivity : AppCompatActivity() {
             "deep_l2_norm_std"       to l2Std,
             "deep_similarity_mean"   to simMean,
             "deep_similarity_std"    to simStd,
-            "deep_sparsity"          to sparsity
+            "deep_sparsity"          to sparse.toFloat() / total
         )
     }
 
-    /**
-     * Validate that deep features look reasonable (not all zeros, not NaN/Inf).
-     * Returns true if features appear valid.
-     */
-    private fun validateDeepFeatures(features: Map<String, Double>): Boolean {
-        if (features.isEmpty()) return false
-        if (features.values.all { it == 0.0 }) {
-            Log.w(TAG, "Deep features are ALL ZERO — likely extraction failed")
-            return false
-        }
-        if (features.values.any { it.isNaN() || it.isInfinite() }) {
-            Log.w(TAG, "Deep features contain NaN/Inf — invalid")
-            return false
-        }
-        return true
-    }
-
-    /**
-     * Main entry point: extract the 11 canonical deep_* features using Kotlin ONNX runtime.
-     * Returns a JSON string to be passed to Python's extract_features().
-     * Returns "{}" if no deep models are loaded (Python will use zeros as fallback).
-     */
     private fun extractDeepFeaturesJson(videoPath: String): String {
         val sessions = listOfNotNull(
-            resnet50Session?.let    { "resnet50"         to it },
-            efficientnetSession?.let { "efficientnet_b0" to it }
+            resnet50Session?.let  { "resnet50"         to it },
+            efficientnetSess?.let { "efficientnet_b0"  to it }
         )
 
         if (sessions.isEmpty()) {
-            Log.w(TAG, "No deep feature ONNX models loaded — deep_* features will be 0.0")
-            Log.w(TAG, "FIX: Re-export ONNX models using export_deep_features_onnx.py")
-            Log.w(TAG, "     Then rebuild the app with the new .onnx files in assets/models/")
+            Log.w(TAG, "No deep models loaded — deep features = 0")
             return "{}"
         }
 
         return try {
             val frames = extractVideoFrames(videoPath)
-            if (frames.isEmpty()) {
-                Log.w(TAG, "No frames could be extracted — deep_* features will be 0.0")
-                return "{}"
-            }
+            if (frames.isEmpty()) { Log.w(TAG, "No frames extracted"); return "{}" }
 
-            val allModelStats = mutableListOf<Map<String, Float>>()
+            val allStats = mutableListOf<Map<String, Float>>()
 
             for ((modelName, session) in sessions) {
-                val frameFeatures = mutableListOf<FloatArray>()
-                for (frame in frames) {
-                    val feat = runDeepModelOnFrame(session, frame)
-                    if (feat != null && feat.isNotEmpty()) frameFeatures.add(feat)
-                }
-                if (frameFeatures.isNotEmpty()) {
-                    val stats = computeDeepStats(frameFeatures)
-                    allModelStats.add(stats)
-                    Log.d(TAG, "$modelName: ${frameFeatures.size} frames, dim=${frameFeatures[0].size}")
+                val frameFeats = frames.mapNotNull { runDeepModel(session, it) }
+                    .filter { it.isNotEmpty() }
+                if (frameFeats.isNotEmpty()) {
+                    val stats = computeDeepStats(frameFeats)
+                    allStats.add(stats)
+                    Log.d(TAG, "$modelName: ${frameFeats.size} frames, dim=${frameFeats[0].size}, " +
+                            "mean=${"%.4f".format(stats["deep_feat_mean"] ?: 0f)}")
                 } else {
-                    Log.w(TAG, "$modelName: no frame features extracted")
+                    Log.w(TAG, "$modelName: no features extracted")
                 }
             }
 
-            if (allModelStats.isEmpty()) return "{}"
+            if (allStats.isEmpty()) return "{}"
 
-            // Average canonical keys across models
             val result = JSONObject()
             for (key in DEEP_FEATURE_NAMES) {
-                val vals = allModelStats.mapNotNull { it[key] }
-                if (vals.isNotEmpty()) {
-                    result.put(key, vals.average())
-                } else {
-                    result.put(key, 0.0)
-                }
+                val vals = allStats.mapNotNull { it[key] }
+                result.put(key, if (vals.isNotEmpty()) vals.average() else 0.0)
             }
 
-            // Validate the result
-            val featMap = DEEP_FEATURE_NAMES.associateWith { result.optDouble(it, 0.0) }
-            if (!validateDeepFeatures(featMap)) {
-                Log.w(TAG, "Deep feature validation failed — sending {} to Python")
+            // Quick sanity check
+            val meanVal = result.optDouble("deep_feat_mean", 0.0)
+            val stdVal  = result.optDouble("deep_feat_std",  0.0)
+            Log.d(TAG, "Deep features OK: mean=${"%.4f".format(meanVal)}, std=${"%.4f".format(stdVal)}")
+
+            if (meanVal == 0.0 && stdVal == 0.0) {
+                Log.w(TAG, "All deep features are 0 — extraction may have failed")
                 return "{}"
             }
 
-            Log.d(TAG, "Deep features extracted successfully: ${result.length()} features via Kotlin ONNX")
-            val mean = String.format("%.4f", result.optDouble("deep_feat_mean", 0.0))
-            val std  = String.format("%.4f", result.optDouble("deep_feat_std", 0.0))
-
-            Log.d(TAG, "Sample: mean=$mean, std=$std")
             result.toString()
 
         } catch (e: Exception) {
-            Log.e(TAG, "extractDeepFeaturesJson failed: ${e.message}", e)
+            Log.e(TAG, "extractDeepFeatures: ${e.message}", e)
             "{}"
         }
     }
@@ -602,21 +440,17 @@ class MainActivity : AppCompatActivity() {
     private fun showModelPicker() {
         val available = getAvailableModels()
         if (available.isEmpty()) {
-            Toast.makeText(this, "Khong tim thay file .onnx trong assets/models/", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "No .onnx in assets/models/", Toast.LENGTH_LONG).show()
             return
         }
-        val displayNames = available.map { name ->
-            if (name == activeModel) "✓ $name (dang dung)" else name
-        }.toTypedArray()
-
+        val names = available.map { if (it == activeModel) "✓ $it (active)" else it }.toTypedArray()
         AlertDialog.Builder(this, R.style.DarkDialog)
-            .setTitle("Chon Model (${available.size} models)")
-            .setItems(displayNames) { _, i ->
-                val selected = available[i]
-                if (selected != activeModel) loadModels(selected)
-                else Toast.makeText(this, "Model nay dang duoc dung", Toast.LENGTH_SHORT).show()
+            .setTitle("Select Model")
+            .setItems(names) { _, i ->
+                if (available[i] != activeModel) loadModels(available[i])
+                else Toast.makeText(this, "Already active", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("Huy", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
@@ -626,8 +460,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun pickVideoFile() {
         val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-            type = "video/*"
-            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "video/*"; addCategory(Intent.CATEGORY_OPENABLE)
         }
         startActivityForResult(Intent.createChooser(intent, "Select Video"), REQ_PICK_VIDEO)
     }
@@ -635,11 +468,9 @@ class MainActivity : AppCompatActivity() {
     private fun handlePickedVideo(uri: Uri) {
         val name = getFileName(uri) ?: "video.mp4"
         val dest = File(cacheDir, name)
-        contentResolver.openInputStream(uri)?.use { inp ->
-            dest.outputStream().use { out -> inp.copyTo(out) }
-        }
+        contentResolver.openInputStream(uri)?.use { it.copyTo(dest.outputStream()) }
         tempFiles.add(dest)
-        setVideo(dest.absolutePath, name, isTemp = false)
+        setVideo(dest.absolutePath, name, false)
     }
 
     private fun getFileName(uri: Uri): String? {
@@ -655,11 +486,11 @@ class MainActivity : AppCompatActivity() {
         selectedPath = path
         binding.tvFileName.text = displayName
         binding.tvFileTag.text  = if (isTemp) "[TMP]" else "[FILE]"
-        binding.tvFileTag.setTextColor(
-            ContextCompat.getColor(this, if (isTemp) R.color.warning else R.color.accent))
+        binding.tvFileTag.setTextColor(ContextCompat.getColor(this,
+            if (isTemp) R.color.warning else R.color.accent))
         binding.btnAnalyze.isEnabled = isModelLoaded
         setBadge("* LOADED", R.color.accent)
-        binding.tvStatus.text = "File ready. Tap RUN ANALYSIS."
+        binding.tvStatus.text = "Ready. Tap RUN ANALYSIS."
     }
 
     private fun showUrlDialog() {
@@ -682,7 +513,7 @@ class MainActivity : AppCompatActivity() {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val url = etUrl.text.toString().trim()
                 if (!url.startsWith("http")) {
-                    tvStatus.text = "Invalid URL - must start with http(s)"
+                    tvStatus.text = "Invalid URL — must start with https://"
                     tvStatus.setTextColor(ContextCompat.getColor(this, R.color.danger))
                     return@setOnClickListener
                 }
@@ -691,11 +522,8 @@ class MainActivity : AppCompatActivity() {
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
 
                 downloadVideo(url,
-                    onSuccess = { path, name ->
-                        dialog.dismiss()
-                        setVideo(path, name, isTemp = true)
-                    },
-                    onError = { err ->
+                    onSuccess = { path, name -> dialog.dismiss(); setVideo(path, name, true) },
+                    onError   = { err ->
                         tvStatus.text = err
                         tvStatus.setTextColor(ContextCompat.getColor(this, R.color.danger))
                         dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
@@ -706,21 +534,14 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun downloadVideo(
-        url: String,
-        onSuccess: (path: String, name: String) -> Unit,
-        onError: (String) -> Unit
-    ) {
+    private fun downloadVideo(url: String, onSuccess: (String, String) -> Unit, onError: (String) -> Unit) {
         executor.execute {
             try {
-                val raw  = Python.getInstance()
-                    .getModule("downloader")
-                    .callAttr("download_video", url)
-                    .toString()
+                val raw  = Python.getInstance().getModule("downloader")
+                    .callAttr("download_video", url).toString()
                 val json = JSONObject(raw)
-                if (json.has("error")) {
-                    mainHandler.post { onError(json.getString("error")) }
-                } else {
+                if (json.has("error")) mainHandler.post { onError(json.getString("error")) }
+                else {
                     val path = json.getString("path")
                     val name = json.getString("name")
                     tempFiles.add(File(path))
@@ -734,7 +555,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  Video Analysis (main flow)
+    //  Analysis
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun analyzeVideo(videoPath: String) {
@@ -748,60 +569,36 @@ class MainActivity : AppCompatActivity() {
 
         executor.execute {
             try {
-                Log.d(TAG, "Starting analysis for: $videoPath")
+                mainHandler.post { binding.tvStatus.text = "Extracting deep features..." }
+                val deepJson = extractDeepFeaturesJson(videoPath)
+                Log.d(TAG, "Deep JSON length: ${deepJson.length}, empty: ${deepJson == "{}"}")
 
-                // ── Step 1: Extract deep features via Kotlin ONNX ─────────────
-                mainHandler.post { binding.tvStatus.text = "Extracting deep visual features..." }
-                val deepFeaturesJson = extractDeepFeaturesJson(videoPath)
-
-                // Log whether we got real features or fallback
-                if (deepFeaturesJson == "{}") {
-                    Log.w(TAG, "⚠ Deep features unavailable — using zeros (accuracy may be lower)")
-                    Log.w(TAG, "  To fix: re-export ONNX with export_deep_features_onnx.py (opset=11)")
-                } else {
-                    Log.d(TAG, "✓ Deep features OK: ${deepFeaturesJson.take(100)}...")
-                }
-
-                // ── Step 2: Python extracts traditional features + merges deep ─
                 mainHandler.post { binding.tvStatus.text = "Analyzing forensic features..." }
-                val raw = Python.getInstance()
-                    .getModule("detector")
-                    .callAttr("extract_features", videoPath, deepFeaturesJson)
-                    .toString()
-
-                Log.d(TAG, "Python result length: ${raw.length}")
+                val raw = Python.getInstance().getModule("detector")
+                    .callAttr("extract_features", videoPath, deepJson).toString()
 
                 val json = JSONObject(raw)
-
                 if (json.has("error")) {
-                    mainHandler.post {
-                        showError(json.getString("error"))
-                        setControlsEnabled(true)
-                    }
+                    mainHandler.post { showError(json.getString("error")); setControlsEnabled(true) }
                     return@execute
+                }
+
+                // Log debug info from Python
+                val dbg = json.optJSONObject("debug_info")
+                if (dbg != null) {
+                    Log.d(TAG, "Python debug: deep_valid=${dbg.optBoolean("deep_features_valid")}, " +
+                            "scaled_mean=${"%.4f".format(dbg.optDouble("scaled_mean", 0.0))}, " +
+                            "scaled_std=${"%.4f".format(dbg.optDouble("scaled_std", 0.0))}")
                 }
 
                 val vectorArr = json.getJSONArray("vector")
                 val floats    = FloatArray(vectorArr.length()) { vectorArr.getDouble(it).toFloat() }
+                Log.d(TAG, "Feature vector: dim=${floats.size}, " +
+                        "mean=${"%.4f".format(floats.average())}")
 
-                Log.d(TAG, "Feature vector length: ${floats.size}")
-
-                // Check debug info
-                val debugInfo = json.optJSONObject("debug_info")
-                if (debugInfo != null) {
-                    val nDeep = debugInfo.optInt("n_deep_features", 0)
-                    val nMiss = debugInfo.optInt("n_missing_features", 0)
-                    Log.d(TAG, "Deep features used: $nDeep, Missing: $nMiss")
-                    if (nDeep == 0) {
-                        Log.w(TAG, "⚠ No deep features — predictions may differ from PC app")
-                    }
-                }
-
-                // ── Step 3: Run LightGBM ONNX classifier ──────────────────────
-                mainHandler.post { binding.tvStatus.text = "Running AI classifier..." }
+                mainHandler.post { binding.tvStatus.text = "Running classifier..." }
                 val (probFake, label) = runOnnxInference(floats)
-
-                Log.d(TAG, "ONNX result - probFake: $probFake, label: $label")
+                Log.d(TAG, "ONNX: label=$label, probFake=${"%.4f".format(probFake)}")
 
                 val finalJson = JSONObject().apply {
                     put("prediction",       if (label == 1) "FAKE" else "REAL")
@@ -817,74 +614,116 @@ class MainActivity : AppCompatActivity() {
                     showResult(finalJson)
                     setControlsEnabled(true)
                 }
+
             } catch (e: Exception) {
                 Log.e(TAG, "Analysis failed", e)
-                mainHandler.post {
-                    showError("Analysis failed: ${e.message}")
-                    setControlsEnabled(true)
-                }
+                mainHandler.post { showError("Analysis failed: ${e.message}"); setControlsEnabled(true) }
             }
         }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  LightGBM ONNX Classifier Inference
+    //  ONNX Classifier — FIXED probability parsing
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun runOnnxInference(floats: FloatArray): Pair<Float, Int> {
-        val session = ortSession ?: throw IllegalStateException("ONNX session chua duoc load")
+        val session = ortSession ?: throw IllegalStateException("ONNX session not loaded")
         val env     = ortEnv    ?: OrtEnvironment.getEnvironment()
 
-        val shape  = longArrayOf(1, floats.size.toLong())
-        val tensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(floats), shape)
+        val tensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(floats),
+            longArrayOf(1, floats.size.toLong()))
 
         tensor.use {
             val output = session.run(mapOf(session.inputNames.first() to it))
             output.use {
-                val labels = output[0].value as LongArray
-                val label  = labels[0].toInt()
 
-                Log.d(TAG, "ONNX raw label: $label")
+                // ── Parse label ──────────────────────────────────────────────
+                val label: Int = when (val rawLabel = output[0].value) {
+                    is LongArray  -> rawLabel[0].toInt()
+                    is IntArray   -> rawLabel[0]
+                    is Array<*>   -> (rawLabel[0] as? Long)?.toInt() ?: (rawLabel[0] as? Int) ?: 0
+                    else          -> 0
+                }
+                Log.d(TAG, "ONNX label raw=${output[0].value?.javaClass?.simpleName}, label=$label")
 
+                // ── Parse probability — handles Float, Double, Number ─────────
+                // LightGBM ONNX output[1] is typically List<Map<Long, Float>> or List<Map<Long, Double>>
                 val probFake: Float = try {
                     @Suppress("UNCHECKED_CAST")
-                    val probList = output[1].value as List<*>
-                    if (probList.isNotEmpty()) {
+                    val probList = output[1].value as? List<*>
+                    Log.d(TAG, "ONNX prob type: ${output[1].value?.javaClass?.simpleName}")
+
+                    if (probList != null && probList.isNotEmpty()) {
                         @Suppress("UNCHECKED_CAST")
-                        val probMap = probList[0] as Map<*, *>
-                        probMap[1L] as? Float
-                            ?: probMap[1] as? Float
-                            ?: probMap["1"] as? Float
-                            ?: 0.5f
-                    } else 0.5f
-                } catch (e1: Exception) {
-                    Log.w(TAG, "Failed to parse ONNX output format 1: $e1")
+                        val probMap = probList[0] as? Map<*, *>
+                        if (probMap != null) {
+                            Log.d(TAG, "ONNX probMap keys: ${probMap.keys.map { "${it?.javaClass?.simpleName}:$it" }}")
+
+                            // Try all possible key types for class-1 (FAKE)
+                            val rawProb = probMap[1L]      // Long key
+                                ?: probMap[1]              // Int key
+                                ?: probMap["1"]            // String key
+                                ?: probMap[1.0]            // Double key
+                                ?: probMap[1.0f]           // Float key
+
+                            Log.d(TAG, "ONNX rawProb=$rawProb (${rawProb?.javaClass?.simpleName})")
+
+                            // Convert to Float regardless of the original type
+                            when (rawProb) {
+                                is Float  -> rawProb
+                                is Double -> rawProb.toFloat()
+                                is Number -> rawProb.toFloat()
+                                else      -> {
+                                    // Last resort: look for the higher-value entry (= FAKE prob)
+                                    val values = probMap.values.mapNotNull { v ->
+                                        when (v) {
+                                            is Float  -> v.toDouble()
+                                            is Double -> v
+                                            is Number -> v.toDouble()
+                                            else      -> null
+                                        }
+                                    }
+                                    Log.d(TAG, "ONNX fallback: probMap values = $values")
+                                    if (values.size >= 2) {
+                                        // Assume values are [prob_real, prob_fake]
+                                        values[1].toFloat()
+                                    } else {
+                                        if (label == 1) 0.75f else 0.25f
+                                    }
+                                }
+                            }
+                        } else null
+                    } else null
+                } catch (e: Exception) {
+                    Log.w(TAG, "Prob parse exception: $e")
+                    null
+                } ?: run {
+                    // Try output[1] as a direct FloatArray
                     try {
-                        val probArray = output[1].value as? FloatArray
-                        if (probArray != null && probArray.size >= 2) probArray[1] else 0.5f
-                    } catch (e2: Exception) {
-                        Log.w(TAG, "Failed to parse ONNX output format 2: $e2")
+                        val arr = output[1].value as? FloatArray
+                        Log.d(TAG, "Prob fallback FloatArray: ${arr?.toList()}")
+                        if (arr != null && arr.size >= 2) arr[1] else if (label == 1) 0.75f else 0.25f
+                    } catch (_: Exception) {
+                        Log.w(TAG, "All prob parsing failed — using label-based fallback")
                         if (label == 1) 0.75f else 0.25f
                     }
                 }
 
-                Log.d(TAG, "Final probFake: $probFake")
+                Log.d(TAG, "Final: label=$label, probFake=${"%.4f".format(probFake)}")
                 return Pair(probFake, label)
             }
         }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  UI Helpers
+    //  UI
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun animateProgress() {
-        val steps = listOf(10 to 400L, 35 to 700L, 62 to 900L, 80 to 500L)
-        steps.forEachIndexed { idx, (value, delay) ->
+        listOf(10 to 400L, 35 to 700L, 62 to 900L, 80 to 500L).forEachIndexed { idx, (v, d) ->
             mainHandler.postDelayed({
-                if (binding.progressBar.progress < 100)
-                    binding.progressBar.progress = value
-            }, delay * (idx + 1))
+                if (binding.progressBar.progress < 100) binding.progressBar.progress = v
+            }, d * (idx + 1))
         }
     }
 
@@ -897,38 +736,30 @@ class MainActivity : AppCompatActivity() {
         val reality    = json.getDouble("reality_score")
         val isFake     = prediction == "FAKE"
 
-        val verdictColor = ContextCompat.getColor(this,
-            if (isFake) R.color.danger else R.color.success)
-        val bgColor = ContextCompat.getColor(this,
-            if (isFake) R.color.danger_dim else R.color.success_dim)
-
-        val deepWarning = if (deepModelsLoaded == 0) " ⚠deep=0" else ""
+        val vColor = ContextCompat.getColor(this, if (isFake) R.color.danger  else R.color.success)
+        val bgColor= ContextCompat.getColor(this, if (isFake) R.color.danger_dim else R.color.success_dim)
 
         binding.resultCard.visibility = View.VISIBLE
         binding.btnClear.visibility   = View.VISIBLE
-        binding.tvStatus.text         = "Analysis complete. Model: $activeModel$deepWarning"
-        setBadge(
-            if (isFake) "!! FAKE" else "OK REAL",
-            if (isFake) R.color.danger else R.color.success
-        )
+        val deepWarn = if (deepModelsLoaded == 0) " ⚠deep=0" else ""
+        binding.tvStatus.text = "Done. Model: $activeModel$deepWarn"
+        setBadge(if (isFake) "!! FAKE" else "OK REAL", if (isFake) R.color.danger else R.color.success)
 
         binding.resultBanner.setBackgroundColor(bgColor)
         binding.tvVerdictIcon.text = if (isFake) "!!" else "OK"
-        binding.tvVerdictIcon.setTextColor(verdictColor)
+        binding.tvVerdictIcon.setTextColor(vColor)
         binding.tvVerdictText.text = if (isFake) "AI GENERATED" else "AUTHENTIC VIDEO"
-        binding.tvVerdictText.setTextColor(verdictColor)
-        binding.tvConfidence.text  = "Confidence: $confidence  |  Model: $activeModel"
+        binding.tvVerdictText.setTextColor(vColor)
+        binding.tvConfidence.text  = "Confidence: $confidence  |  $activeModel"
 
         binding.tvProbFakeVal.text    = "${"%.1f".format(probFake * 100)}%"
         binding.tvProbRealVal.text    = "${"%.1f".format(probReal * 100)}%"
         binding.progressFake.progress = (probFake * 100).toInt()
         binding.progressReal.progress = (probReal * 100).toInt()
         binding.progressFake.progressTintList =
-            android.content.res.ColorStateList.valueOf(
-                ContextCompat.getColor(this, R.color.danger))
+            android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this, R.color.danger))
         binding.progressReal.progressTintList =
-            android.content.res.ColorStateList.valueOf(
-                ContextCompat.getColor(this, R.color.success))
+            android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this, R.color.success))
 
         binding.tvArtifactVal.text = "${"%.3f".format(artifact)}"
         binding.tvRealityVal.text  = "${"%.3f".format(reality)}"
@@ -947,21 +778,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Show warning if deep models not loaded
         if (deepModelsLoaded == 0) {
-            val warnTv = TextView(this).apply {
-                text = "⚠ Deep features unavailable (ONNX IR version issue). " +
-                        "Re-export models with export_deep_features_onnx.py for full accuracy."
+            binding.layoutFindings.addView(TextView(this).apply {
+                text     = "⚠ Deep features not available. Re-export ONNX with export_deep_features_onnx.py"
                 textSize = 11f
                 setTextColor(ContextCompat.getColor(context, R.color.warning))
                 setPadding(0, 12, 0, 0)
-            }
-            binding.layoutFindings.addView(warnTv)
+            })
         }
 
-        binding.scrollView.post {
-            binding.scrollView.smoothScrollTo(0, binding.resultCard.top)
-        }
+        binding.scrollView.post { binding.scrollView.smoothScrollTo(0, binding.resultCard.top) }
     }
 
     private fun showError(msg: String) {
@@ -974,9 +800,7 @@ class MainActivity : AppCompatActivity() {
     private fun copyAsset(assetPath: String): File {
         val outFile = File(filesDir, assetPath)
         outFile.parentFile?.mkdirs()
-        assets.open(assetPath).use { inp ->
-            outFile.outputStream().use { out -> inp.copyTo(out) }
-        }
+        assets.open(assetPath).use { it.copyTo(outFile.outputStream()) }
         return outFile
     }
 }
