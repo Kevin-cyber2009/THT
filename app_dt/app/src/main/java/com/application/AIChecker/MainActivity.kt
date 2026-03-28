@@ -57,10 +57,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Lifecycle
-    // ─────────────────────────────────────────────────────────────────────────
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -87,9 +83,6 @@ class MainActivity : AppCompatActivity() {
             data?.data?.let { handlePickedVideo(it) }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // UI Setup
-    // ─────────────────────────────────────────────────────────────────────────
 
     private fun setupUI() {
         setControlsEnabled(false)
@@ -122,9 +115,6 @@ class MainActivity : AppCompatActivity() {
         binding.tvStatus.text         = "Ready — select a file or paste a URL."
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Model Loading
-    // ─────────────────────────────────────────────────────────────────────────
 
     private fun loadModels(modelName: String) {
         isModelLoaded = false
@@ -151,7 +141,6 @@ class MainActivity : AppCompatActivity() {
 
                 val scalerFile = copyAsset("models/$scalerName")
 
-                // Call Python load_models
                 val result = Python.getInstance()
                     .getModule("detector")
                     .callAttr("load_models",
@@ -169,7 +158,6 @@ class MainActivity : AppCompatActivity() {
                     return@execute
                 }
 
-                // Load classifier ONNX
                 val onnxFile = copyAsset("models/$modelName")
                 val env      = ortEnv ?: OrtEnvironment.getEnvironment().also { ortEnv = it }
                 ortSession?.close()
@@ -211,10 +199,6 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Cancel", null)
             .show()
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // File / URL picking
-    // ─────────────────────────────────────────────────────────────────────────
 
     private fun pickVideoFile() {
         val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
@@ -325,9 +309,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Analysis
-    // ─────────────────────────────────────────────────────────────────────────
 
     private fun analyzeVideo(videoPath: String) {
         setControlsEnabled(false)
@@ -342,7 +323,6 @@ class MainActivity : AppCompatActivity() {
             try {
                 Log.d(TAG, "Starting analysis: $videoPath")
 
-                // Python extracts traditional features + neutralises deep features
                 val raw = Python.getInstance()
                     .getModule("detector")
                     .callAttr("extract_features", videoPath)
@@ -368,7 +348,6 @@ class MainActivity : AppCompatActivity() {
                 Log.d(TAG, "Feature vector dim=${floats.size}, " +
                         "mean=${"%.4f".format(floats.average())}")
 
-                // Log debug info if present
                 json.optJSONObject("debug_info")?.let { dbg ->
                     Log.d(TAG, "Debug: missing=${dbg.optInt("n_missing")}, " +
                             "scaled_mean=${"%.4f".format(dbg.optDouble("scaled_mean"))}, " +
@@ -402,15 +381,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ONNX Inference  ←  THE MAIN FIX IS HERE
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Convert any numeric value (Float, Double, Long, Int …) to Float.
-     * LightGBM ONNX returns probabilities as Double on most ONNX Runtime
-     * versions — the old code cast directly to Float and always got null.
-     */
     private fun anyToFloat(value: Any?): Float? = when (value) {
         is Float  -> value
         is Double -> value.toFloat()
@@ -420,20 +390,10 @@ class MainActivity : AppCompatActivity() {
         else      -> null
     }
 
-    /**
-     * Parse P(class=1) from output[1] of an LightGBM ONNX model.
-     *
-     * Possible formats returned by different ONNX Runtime / opset combos:
-     *   A) List<Map<Long, Float>>    – e.g. [{0L→0.23f, 1L→0.77f}]
-     *   B) List<Map<Long, Double>>   – same but Double values  ← was broken!
-     *   C) FloatArray [p0, p1]
-     *   D) Array<FloatArray>         – [[p0, p1]]
-     */
     private fun parseProbFake(output: OrtSession.Result): Float {
         return try {
             when (val raw1 = output[1].value) {
 
-                // ── Format A / B: List<Map<*, *>> ────────────────────────────
                 is List<*> -> {
                     val map = raw1.firstOrNull() as? Map<*, *>
                     if (map != null) {
@@ -442,7 +402,6 @@ class MainActivity : AppCompatActivity() {
                             ?: anyToFloat(map[1])
                             ?: anyToFloat(map["1"])
                             ?: run {
-                                // Fallback: sort entries by numeric key, take index 1
                                 val sorted = map.entries
                                     .mapNotNull { e ->
                                         val k = (e.key as? Number)?.toDouble()
@@ -458,13 +417,11 @@ class MainActivity : AppCompatActivity() {
                     } else 0.5f
                 }
 
-                // ── Format C: FloatArray [p0, p1] ────────────────────────────
                 is FloatArray -> {
                     Log.d(TAG, "Prob FloatArray: ${raw1.toList()}")
                     if (raw1.size >= 2) raw1[1] else 0.5f
                 }
 
-                // ── Format D: Array<FloatArray> ──────────────────────────────
                 is Array<*> -> {
                     val inner = raw1.firstOrNull()
                     when (inner) {
@@ -481,7 +438,6 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.w(TAG, "parseProbFake exception: ${e.message}")
-            // IMPORTANT: do NOT use 0.75f here — that was the source of the bias!
             0.5f
         }
     }
@@ -501,7 +457,6 @@ class MainActivity : AppCompatActivity() {
             val output = session.run(mapOf(session.inputNames.first() to it))
             output.use {
 
-                // ── Parse label (output[0]) ───────────────────────────────────
                 val label: Int = try {
                     when (val rawLabel = output[0].value) {
                         is LongArray  -> rawLabel[0].toInt()
@@ -526,17 +481,12 @@ class MainActivity : AppCompatActivity() {
 
                 Log.d(TAG, "Raw label=$label (type=${output[0].value?.javaClass?.simpleName})")
 
-                // ── Parse probability (output[1]) ─────────────────────────────
                 val probFake = parseProbFake(output)
 
                 return Pair(probFake, label)
             }
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // UI helpers
-    // ─────────────────────────────────────────────────────────────────────────
 
     private fun animateProgress() {
         val steps = listOf(10 to 400L, 35 to 700L, 62 to 900L, 80 to 500L)
