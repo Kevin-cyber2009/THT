@@ -1,0 +1,22 @@
+{
+  "best_model": "onestar",
+  "reason": "selected_by_offline_benchmark",
+  "ranking_metric": [
+    "f1",
+    "accuracy",
+    "auc",
+    "recall"
+  ],
+  "results": {
+    "onestar": {
+      "samples": 20,
+      "failures": 0,
+      "accuracy": 0.85,
+      "precision": 0.8181818181818182,
+      "recall": 0.9,
+      "f1": 0.8571428571428571,
+      "auc": 0.95,
+      "failures_preview": []
+    }
+  }
+}

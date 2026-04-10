@@ -6,6 +6,11 @@
         <item name="android:statusBarColor">@color/surface</item>
         <item name="android:navigationBarColor">@color/bg_dark</item>
     </style>
+    <style name="Theme.AIChecker.Launcher" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">@drawable/launch_screen</item>
+        <item name="android:statusBarColor">@color/surface</item>
+        <item name="android:navigationBarColor">@color/bg_dark</item>
+    </style>
     <style name="DarkDialog" parent="Theme.MaterialComponents.DayNight.Dialog.Alert">
         <item name="colorSurface">@color/surface</item>
         <item name="android:background">@color/surface</item>

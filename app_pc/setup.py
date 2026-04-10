@@ -36,6 +36,7 @@ setup(
         "seaborn>=0.13.0",
         "reportlab>=4.0.0",
         "PySide6>=6.6.0",
+        "onnxruntime>=1.16.3",
         "pytest>=7.4.0",
         "tqdm>=4.66.0",
         "joblib>=1.3.0",
